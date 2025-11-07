@@ -271,7 +271,7 @@ async function renderInitialView() {
         yearSelect.value = String(params.year);
       } else {
         // Default to latest year (first option)
-        const latestOption = yearSelect.options[1]; // Skip "Select year" placeholder
+        const latestOption = yearSelect.options[yearSelect.options.length - 1]; // Get last option (most recent year)
         if (latestOption) {
           yearSelect.value = latestOption.value;
         }
@@ -330,19 +330,21 @@ function parseUrlParameters() {
  */
 function setupYearSelector() {
   const years = window.supabaseModule.getAvailableYears();
+  // Sort years in ascending order (smallest first, 2023 at bottom)
+  const sortedYears = [...years].sort((a, b) => a - b);
   const select = document.getElementById('yearSelect');
   
   select.innerHTML = '<option value="">Select year</option>';
-  years.forEach(year => {
+  sortedYears.forEach(year => {
     const option = document.createElement('option');
     option.value = year;
     option.textContent = year;
     select.appendChild(option);
   });
 
-  // Default to most recent year
-  if (years.length > 0) {
-    selectedYear = years[0];
+  // Default to most recent year (which will be the last in the sorted array)
+  if (sortedYears.length > 0) {
+    selectedYear = sortedYears[sortedYears.length - 1];
     select.value = selectedYear;
   }
 }
@@ -523,14 +525,14 @@ function refreshButtons() {
       row.appendChild(removeBtn);
     }
     
-    // Always add comparison checkbox for all groups (to the right of remove button)
+    // Always add comparison checkbox for all groups (positioned to align with heading)
     const comparisonCheckbox = document.createElement('input');
     comparisonCheckbox.type = 'checkbox';
     comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
     comparisonCheckbox.checked = true; // Default to checked
     comparisonCheckbox.style.width = '18px';
     comparisonCheckbox.style.height = '18px';
-    comparisonCheckbox.style.marginLeft = '10px';
+    comparisonCheckbox.style.marginLeft = '50px'; // Increased from 10px to move right and center under heading
     comparisonCheckbox.title = 'Include in comparison statement';
     comparisonCheckbox.addEventListener('change', refreshCheckboxes);
     row.appendChild(comparisonCheckbox);
@@ -727,7 +729,18 @@ function drawChart() {
 
     const pollutantName = window.supabaseModule.getPollutantName(selectedPollutantId);
 
-    const statement = `${higherPolluter.groupName} emits ${pollutionRatio.toFixed(1)} times more ${pollutantName} pollution than ${lowerPolluter.groupName}. ${lowerPolluter.groupName} provides ${heatRatio.toFixed(1)} times more heat.`;
+    // Get display names for groups
+    const higherPolluter_displayName = getGroupDisplayName(higherPolluter.groupName);
+    const lowerPolluter_displayName = getGroupDisplayName(lowerPolluter.groupName);
+
+    // Create enhanced comparison statement with arrows and calculated values
+    const statement = {
+      line1: `${higherPolluter_displayName} emit ${pollutionRatio.toFixed(1)} times more ${pollutantName} than ${lowerPolluter_displayName}`,
+      line2: `yet produce around ${heatRatio.toFixed(1)} times less heat nationally`,
+      pollutionRatio: pollutionRatio,
+      heatRatio: heatRatio,
+      pollutantName: pollutantName
+    };
     updateComparisonStatement(statement);
   } else {
     updateComparisonStatement("Select two groups to see a comparison.");
@@ -771,10 +784,88 @@ function ensureComparisonDivExists() {
   return comparisonDiv;
 }
 
+// Get custom display name for comparison statements
+function getGroupDisplayName(groupName) {
+  const displayNames = {
+    'Ecodesign Stove - Ready To Burn': 'Ecodesign stoves burning Ready to Burn wood',
+    'Gas Boilers': 'gas boilers'
+  };
+  return displayNames[groupName] || groupName.toLowerCase();
+}
+
 function updateComparisonStatement(statement) {
+  console.log('🔥 updateComparisonStatement called with:', statement);
   const comparisonDiv = ensureComparisonDivExists();
   if (comparisonDiv) {
-    comparisonDiv.textContent = statement;
+    if (typeof statement === 'object' && statement.line1 && statement.line2) {
+      // Responsive design using JavaScript-calculated sizes based on window width
+      const windowWidth = window.innerWidth;
+      console.log('🔧 Window width in updateComparisonStatement:', windowWidth); // Debug info
+      
+      // Responsive scaling - optimized breakpoints
+      let baseScale;
+      if (windowWidth <= 480) {
+        baseScale = 0.5; // Mobile phones
+      } else if (windowWidth <= 768) {
+        baseScale = 0.65; // Tablets
+      } else if (windowWidth <= 1024) {
+        baseScale = 0.8; // Small laptops
+      } else if (windowWidth <= 1440) {
+        baseScale = 0.9; // Standard desktops
+      } else {
+        baseScale = 1.0; // Large screens
+      }
+      
+      const triangleWidth = Math.floor(180 * baseScale);
+      const triangleHeight = Math.floor(140 * baseScale);
+      const triangleBorder = Math.floor(90 * baseScale);
+      const triangleBorderHeight = Math.floor(140 * baseScale);
+      const triangleTextSize = Math.max(Math.floor(18 * baseScale), 12); // Minimum 12px
+      const centerTextSize = Math.max(Math.floor(26 * baseScale), 16); // Minimum 16px
+      const containerPadding = Math.floor(25 * baseScale);
+      const containerHeight = Math.floor(140 * baseScale);
+      const centerPadding = Math.floor(30 * baseScale);
+      
+      console.log('Calculated sizes:', {
+        triangleWidth, triangleHeight, triangleBorder, triangleTextSize, centerTextSize
+      }); // Debug info
+      
+      comparisonDiv.innerHTML = `
+        <div style="background: #FEAE00 !important; background-image: none !important; padding: ${containerPadding}px; margin: 0 auto; border-radius: 25px; display: flex; justify-content: space-between; align-items: center; min-height: ${containerHeight}px; box-sizing: border-box; width: calc(100% - 140px); position: relative; border: none; box-shadow: none;">
+          
+          <!-- Left Triangle (UP) -->
+          <div style="position: relative; width: ${triangleWidth}px; height: ${triangleHeight}px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 0; height: 0; border-left: ${triangleBorder}px solid transparent; border-right: ${triangleBorder}px solid transparent; border-bottom: ${triangleBorderHeight}px solid #dc2626; position: relative;">
+            </div>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -25%); color: white; font-weight: bold; font-size: ${triangleTextSize}px; text-align: center; line-height: 1.2;">
+              ${statement.pollutionRatio.toFixed(1)} x<br>${statement.pollutantName}
+            </div>
+          </div>
+
+          <!-- Center Text -->
+          <div style="flex: 1; text-align: center; color: white; font-weight: bold; font-size: ${centerTextSize}px; line-height: 1.4; padding: 0 ${centerPadding}px;">
+            ${statement.line1}<br><br>${statement.line2}
+          </div>
+
+          <!-- Right Triangle (DOWN) -->
+          <div style="position: relative; width: ${triangleWidth}px; height: ${triangleHeight}px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 0; height: 0; border-left: ${triangleBorder}px solid transparent; border-right: ${triangleBorder}px solid transparent; border-top: ${triangleBorderHeight}px solid #dc2626; position: relative;">
+            </div>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -75%); color: white; font-weight: bold; font-size: ${triangleTextSize}px; text-align: center; line-height: 1.2;">
+              ${statement.heatRatio.toFixed(1)}x<br>less<br>heat
+            </div>
+          </div>
+
+        </div>
+      `;
+    } else {
+      // Simple format for fallback
+      comparisonDiv.innerHTML = `
+        <div style="background: #f97316; padding: 15px; margin: 15px auto; border-radius: 8px; text-align: center; color: white; font-weight: bold; max-width: 1000px;">
+          ${statement}
+        </div>
+      `;
+    }
     comparisonDiv.className = 'comparison-statement';
   }
 }
@@ -824,7 +915,7 @@ function updateURL() {
     return group ? group.id : null;
   }).filter(id => id !== null);
 
-  const query = `year=${selectedYear}&pollutant_id=${selectedPollutantId}&group_ids=${selectedGroupIds.join(',')}`;
+  const query = `pollutant_id=${selectedPollutantId}&group_ids=${selectedGroupIds.join(',')}&year=${selectedYear}`;
   const newURL = window.location.pathname + '?' + query;
   window.history.replaceState({}, '', newURL);
 }
@@ -885,17 +976,27 @@ if (document.readyState === 'loading') {
 // Align comparison header with checkboxes
 function alignComparisonHeader() {
   const header = document.getElementById('comparisonHeader');
-  const firstCheckbox = document.querySelector('.comparison-checkbox');
+  const checkboxes = document.querySelectorAll('.comparison-checkbox');
   
-  if (header && firstCheckbox) {
-    const checkboxRect = firstCheckbox.getBoundingClientRect();
+  if (header && checkboxes.length > 0) {
+    const firstCheckbox = checkboxes[0];
     const containerRect = header.parentElement.getBoundingClientRect();
     
-    // Calculate the horizontal position to align with checkboxes
-    const leftOffset = checkboxRect.left - containerRect.left;
+    // Calculate center position of all checkboxes
+    let totalLeft = 0;
+    checkboxes.forEach(checkbox => {
+      const rect = checkbox.getBoundingClientRect();
+      totalLeft += rect.left + (rect.width / 2); // Center of each checkbox
+    });
+    const averageCenterX = totalLeft / checkboxes.length;
     
-    // Calculate the vertical position to align with first checkbox
-    const topOffset = checkboxRect.top - containerRect.top - 35; // 35px above to account for header height
+    // Center the header horizontally with the average checkbox position
+    const headerWidth = 80; // Approximate width of "Comparison Statement"
+    const leftOffset = (averageCenterX - containerRect.left) - (headerWidth / 2);
+    
+    // Position header above first checkbox (moved up more)
+    const firstCheckboxRect = firstCheckbox.getBoundingClientRect();
+    const topOffset = firstCheckboxRect.top - containerRect.top - 45; // Increased from 35px to 45px
     
     header.style.left = leftOffset + 'px';
     header.style.top = topOffset + 'px';
