@@ -1,6 +1,6 @@
 /**
  * Chart Renderer Module
- * Handles Google Charts scatter chart rendering
+ * Handles Google Charts bubble chart rendering
  */
 
 let chart = null;
@@ -16,18 +16,18 @@ google.charts.setOnLoadCallback(() => {
 });
 
 /**
- * Draw scatter chart
+ * Draw bubble chart
  * @param {number} year - Selected year
  * @param {number} pollutantId - Selected pollutant ID
  * @param {Array} groupIds - Array of selected group IDs
  */
-function drawScatterChart(year, pollutantId, groupIds) {
+function drawBubbleChart(year, pollutantId, groupIds) {
   // Wait for Google Charts to be ready
   if (!googleChartsReady) {
     console.log('Google Charts not ready yet, waiting...');
     google.charts.setOnLoadCallback(() => {
       googleChartsReady = true;
-      drawScatterChart(year, pollutantId, groupIds);
+      drawBubbleChart(year, pollutantId, groupIds);
     });
     return;
   }
@@ -45,26 +45,42 @@ function drawScatterChart(year, pollutantId, groupIds) {
     return;
   }
 
-  // Prepare Google DataTable
+  // Prepare Google DataTable for scatter chart with bubble-like styling
   const data = new google.visualization.DataTable();
-  data.addColumn('number', 'Activity Data');
-  data.addColumn('number', window.supabaseModule.getPollutantName(pollutantId));
+  data.addColumn('number', 'Activity Data (TJ)');
+  data.addColumn('number', `${window.supabaseModule.getPollutantName(pollutantId)} (${window.supabaseModule.getPollutantUnit(pollutantId)})`);
   data.addColumn({type: 'string', role: 'tooltip'});
   data.addColumn({type: 'string', role: 'style'});
 
-  // Add data rows with colors
-  console.log('Adding', dataPoints.length, 'rows to chart data');
-  dataPoints.forEach(point => {
+  // Add data rows with emission factor calculation and sizing
+  console.log('Adding', dataPoints.length, 'rows to bubble-style scatter chart data');
+  dataPoints.forEach((point, index) => {
     const color = window.Colors.getColorForGroup(point.groupName);
-    const pollutantUnit = window.supabaseModule.getPollutantUnit(pollutantId); // Dynamically fetch pollutant unit
-    // Create tooltip with fixed unit for Activity Data and dynamic unit for pollutant
-    const tooltip = `${point.groupName}\nActivity: ${point.activityData.toLocaleString()} TJ\nPollutant Value: ${point.pollutantValue.toLocaleString()} ${pollutantUnit}`;
+    const pollutantUnit = window.supabaseModule.getPollutantUnit(pollutantId);
+    
+    // Calculate emission factor: (Emissions / Activity Data) * 1,000,000
+    const emissionFactor = point.activityData !== 0 ? 
+      (point.pollutantValue / point.activityData) * 1000000 : 0;
+    
+    // Calculate bubble size based on emission factor (scale it to reasonable point size)
+    const minSize = 15;
+    const maxSize = 50;
+    const emissionFactors = dataPoints.map(p => 
+      p.activityData !== 0 ? (p.pollutantValue / p.activityData) * 1000000 : 0
+    );
+    const minFactor = Math.min(...emissionFactors);
+    const maxFactor = Math.max(...emissionFactors);
+    const normalizedSize = maxFactor > minFactor ? 
+      minSize + ((emissionFactor - minFactor) / (maxFactor - minFactor)) * (maxSize - minSize) :
+      (minSize + maxSize) / 2;
+    
+    const tooltip = `${point.groupName}\nActivity: ${point.activityData.toLocaleString()} TJ\nEmissions: ${point.pollutantValue.toLocaleString()} ${pollutantUnit}\nEmission Factor: ${emissionFactor.toFixed(2)}`;
     
     data.addRow([
-      point.activityData,
-      point.pollutantValue,
+      point.activityData, // X-axis
+      point.pollutantValue, // Y-axis  
       tooltip,
-      `point {fill-color: ${color}; size: 8;}`
+      `point {fill-color: ${color}; size: ${Math.round(normalizedSize)};}`
     ]);
   });
   
@@ -79,10 +95,10 @@ function drawScatterChart(year, pollutantId, groupIds) {
   console.log('Chart renderer - Pollutant Unit:', pollutantUnit);
   console.log('Chart renderer - Activity Unit:', activityUnit);
   
-  // Format title and axis labels with hyphens and spaces
+  // Format title and axis labels for bubble chart
   const chartTitle = `${pollutantName} - ${pollutantUnit}`;
-  const yAxisTitle = chartTitle;
-  const xAxisTitle = activityUnit ? `Activity Data - ${activityUnit}` : 'Activity Data';
+  const yAxisTitle = `${pollutantName} (${pollutantUnit})`;
+  const xAxisTitle = activityUnit ? `Activity Data (${activityUnit})` : 'Activity Data (TJ)';
 
   // Create a custom title element with two lines
   const chartTitleElement = document.getElementById('chartTitle');
@@ -118,6 +134,32 @@ function drawScatterChart(year, pollutantId, groupIds) {
     return;
   }
 
+  // Prepare colors for each group
+  const colors = [];
+  const uniqueGroups = [...new Set(dataPoints.map(point => point.groupName))];
+  uniqueGroups.forEach(groupName => {
+    colors.push(window.Colors.getColorForGroup(groupName));
+  });
+
+  // Calculate axis ranges with padding for bubbles
+  const activityValues = dataPoints.map(p => p.activityData);
+  const pollutantValues = dataPoints.map(p => p.pollutantValue);
+  
+  const maxActivity = Math.max(...activityValues);
+  const maxPollutant = Math.max(...pollutantValues);
+  
+  // Add extra padding to prevent bubble clipping (bubbles need radius space)
+  const activityPadding = maxActivity * 0.25;
+  const pollutantPadding = maxPollutant * 0.25;
+  
+  // Get minimum values to add left/bottom padding
+  const minActivity = Math.min(...activityValues);
+  const minPollutant = Math.min(...pollutantValues);
+  
+  // Calculate minimum offsets (ensure bubbles don't start at the very edge)
+  const activityMinOffset = Math.max(0, minActivity - (maxActivity * 0.05));
+  const pollutantMinOffset = Math.max(0, minPollutant - (maxPollutant * 0.05));
+
   currentOptions = {
     legend: { position: 'none' }, // Remove Google Chart legend
     title: '', // Invisible Google Chart title
@@ -125,27 +167,45 @@ function drawScatterChart(year, pollutantId, groupIds) {
       fontSize: 0 // Minimize title space
     },
     chartArea: {
-      top: 50,
-      bottom: 50,
-      left: '10%',
-      width: '80%',
-      height: '70%'
+      top: 120,
+      bottom: 120,
+      left: 150,
+      right: 80,
+      height: '55%'
     },
     height: chartHeight,
     hAxis: {
       title: xAxisTitle,
-      minValue: 0,
       format: 'short',
       gridlines: {
         count: 5
       },
       titleTextStyle: {
         italic: false
+      },
+      viewWindow: {
+        min: 0,
+        max: maxActivity + activityPadding
       }
     },
     vAxis: {
       title: yAxisTitle,
-      minValue: 0,
+      viewWindow: {
+        min: 0,
+        max: maxPollutant + pollutantPadding
+      }
+    },
+    explorer: {
+      actions: ['dragToZoom', 'rightClickToReset'],
+      axis: 'horizontal',
+      keepInBounds: true,
+      maxZoomIn: 4.0
+    },
+    colors: colors,
+    colorAxis: {
+      legend: {
+        position: 'none'
+      }
     }
   };
 
@@ -160,7 +220,7 @@ function drawScatterChart(year, pollutantId, groupIds) {
     dataPoints: dataPoints
   };
 
-  // Draw chart
+  // Draw chart using ScatterChart with bubble-like styling to avoid clipping
   if (!chart) {
     chart = new google.visualization.ScatterChart(chartDiv);
 
@@ -184,7 +244,7 @@ function drawScatterChart(year, pollutantId, groupIds) {
     console.log('chart.draw() completed without error');
 
     // Create custom legend after chart is drawn
-    createCustomLegend(chart, data, groupIds);
+    createCustomLegend(chart, data, groupIds, dataPoints);
   } catch (err) {
     console.error('Error calling chart.draw():', err);
   }
@@ -210,7 +270,7 @@ function drawScatterChart(year, pollutantId, groupIds) {
  * @param {Object} data - Google DataTable instance
  * @param {Array} groupIds - Array of selected group IDs
  */
-function createCustomLegend(chart, data, groupIds) {
+function createCustomLegend(chart, data, groupIds, dataPoints) {
   const legendContainer = document.getElementById('customLegend');
   if (!legendContainer) {
     console.error('Missing #customLegend element');
@@ -224,7 +284,7 @@ function createCustomLegend(chart, data, groupIds) {
   legendContainer.style.gap = '10px';
 
   groupIds.forEach((groupId, index) => {
-    const groupName = data.getValue(index, 2).split('\n')[0]; // Extract only the group name
+    const groupName = dataPoints[index].groupName; // Get group name from dataPoints array
 
     const legendItem = document.createElement('div');
     legendItem.className = 'legend-item';
@@ -305,7 +365,7 @@ function getChartInstance() {
 
 // Export chart renderer functions
 window.ChartRenderer = {
-  drawScatterChart,
+  drawBubbleChart,
   showMessage,
   clearMessage,
   getCurrentChartData,

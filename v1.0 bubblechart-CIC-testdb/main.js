@@ -689,14 +689,14 @@ function drawChart() {
   // Reset colors for new chart
   window.Colors.resetColorSystem();
 
-  console.log('Calling ChartRenderer.drawScatterChart with:', {
+  console.log('Calling ChartRenderer.drawBubbleChart with:', {
     year: selectedYear,
     pollutantId: selectedPollutantId,
     groupIds: selectedGroupIds
   });
 
   // Draw chart
-  window.ChartRenderer.drawScatterChart(selectedYear, selectedPollutantId, selectedGroupIds);
+  window.ChartRenderer.drawBubbleChart(selectedYear, selectedPollutantId, selectedGroupIds);
 
   // Update the comparison statement now that data is ready
   const dataPoints = window.supabaseModule.getScatterData(selectedYear, selectedPollutantId, selectedGroupIds);
