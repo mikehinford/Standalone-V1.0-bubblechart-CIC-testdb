@@ -451,8 +451,13 @@ function addGroupSelector(defaultValue = "", usePlaceholder = true){
   div.appendChild(controlWrap);
 
   container.appendChild(div);
-  refreshGroupDropdowns();
-  refreshButtons();
+  
+  // Delay the refresh to avoid conflicts during initialization
+  setTimeout(() => {
+    refreshGroupDropdowns();
+    refreshButtons();
+    alignComparisonHeader();
+  }, 10);
 }
 
 // Refresh group dropdown options (like linechart)
@@ -491,39 +496,48 @@ function refreshButtons() {
 
   const rows = container.querySelectorAll('.groupRow');
 
-  // Add remove buttons only if there are 2 or more groups
-  if (rows.length >= 2) {
-    rows.forEach(row => {
-      if (!row.querySelector('.remove-btn')) {
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'remove-btn';
-        removeBtn.innerHTML = '<span class="remove-icon">−</span> Remove Group';
-        // make ARIA label include the current group name if available
-        const sel = row.querySelector('select');
-        const groupName = sel ? (sel.value || (sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].text) || '') : '';
-        removeBtn.setAttribute('aria-label', groupName ? `Remove group ${groupName}` : 'Remove group');
-        removeBtn.onclick = () => {
-          row.remove();
-          refreshButtons();
-          refreshGroupDropdowns();
-          updateChart();
-        };
-        // Append remove button as a sibling to the control wrapper
-        row.appendChild(removeBtn);
+  // Process all rows to add remove buttons and checkboxes
+  rows.forEach(row => {
+    // Remove all existing checkboxes and buttons to rebuild them cleanly
+    const existingCheckboxes = row.querySelectorAll('.group-checkbox');
+    existingCheckboxes.forEach(checkbox => checkbox.remove());
+    const existingRemoveButtons = row.querySelectorAll('.remove-btn');
+    existingRemoveButtons.forEach(btn => btn.remove());
 
-        // Remove all existing checkboxes for group comparison
-        const existingCheckboxes = row.querySelectorAll('.group-checkbox');
-        existingCheckboxes.forEach(checkbox => checkbox.parentElement.remove());
-
-        // Add a single checkbox labeled "Include in comparison statement"
-        const comparisonCheckbox = document.createElement('label');
-        comparisonCheckbox.style.marginLeft = '10px';
-        comparisonCheckbox.innerHTML = '<input type="checkbox" class="group-checkbox" checked> Include in comparison statement';
-        row.appendChild(comparisonCheckbox);
-      }
-    });
-  }
+    // Add remove button only if there are 2 or more groups
+    if (rows.length >= 2) {
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-btn';
+      removeBtn.innerHTML = '<span class="remove-icon">−</span> Remove Group';
+      // make ARIA label include the current group name if available
+      const sel = row.querySelector('select');
+      const groupName = sel ? (sel.value || (sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].text) || '') : '';
+      removeBtn.setAttribute('aria-label', groupName ? `Remove group ${groupName}` : 'Remove group');
+      removeBtn.onclick = () => {
+        row.remove();
+        refreshButtons();
+        refreshGroupDropdowns();
+        updateChart();
+      };
+      row.appendChild(removeBtn);
+    }
+    
+    // Always add comparison checkbox for all groups (to the right of remove button)
+    const comparisonCheckbox = document.createElement('input');
+    comparisonCheckbox.type = 'checkbox';
+    comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
+    comparisonCheckbox.checked = true; // Default to checked
+    comparisonCheckbox.style.width = '18px';
+    comparisonCheckbox.style.height = '18px';
+    comparisonCheckbox.style.marginLeft = '10px';
+    comparisonCheckbox.title = 'Include in comparison statement';
+    comparisonCheckbox.addEventListener('change', refreshCheckboxes);
+    row.appendChild(comparisonCheckbox);
+  });
+  
+  // Align the comparison header with the checkboxes
+  alignComparisonHeader();
 
   // Add "Add Group" button just below the last group box
   let addBtn = container.querySelector('.add-btn');
@@ -543,11 +557,12 @@ function refreshButtons() {
     addBtn.disabled = false;
     addBtn.innerHTML = '<span class="add-icon">+</span> Add Group';
   }
+  
 }
 
 // Ensure checkboxes are only checked for two groups at once
 function refreshCheckboxes() {
-  const checkboxes = document.querySelectorAll('.group-checkbox');
+  const checkboxes = document.querySelectorAll('.comparison-checkbox');
   const checkedBoxes = Array.from(checkboxes).filter(checkbox => checkbox.checked);
 
   if (checkedBoxes.length > 2) {
@@ -865,4 +880,24 @@ if (document.readyState === 'loading') {
 } else {
   console.log('Document already loaded, calling init immediately');
   init();
+}
+
+// Align comparison header with checkboxes
+function alignComparisonHeader() {
+  const header = document.getElementById('comparisonHeader');
+  const firstCheckbox = document.querySelector('.comparison-checkbox');
+  
+  if (header && firstCheckbox) {
+    const checkboxRect = firstCheckbox.getBoundingClientRect();
+    const containerRect = header.parentElement.getBoundingClientRect();
+    
+    // Calculate the horizontal position to align with checkboxes
+    const leftOffset = checkboxRect.left - containerRect.left;
+    
+    // Calculate the vertical position to align with first checkbox
+    const topOffset = checkboxRect.top - containerRect.top - 35; // 35px above to account for header height
+    
+    header.style.left = leftOffset + 'px';
+    header.style.top = topOffset + 'px';
+  }
 }

@@ -167,11 +167,11 @@ function drawBubbleChart(year, pollutantId, groupIds) {
       fontSize: 0 // Minimize title space
     },
     chartArea: {
-      top: 120,
+      top: 80,
       bottom: 120,
       left: 150,
       right: 80,
-      height: '55%'
+      height: '60%'
     },
     height: chartHeight,
     hAxis: {
