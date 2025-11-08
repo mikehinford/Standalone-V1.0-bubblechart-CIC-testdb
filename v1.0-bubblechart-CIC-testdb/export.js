@@ -3,82 +3,452 @@
  * Handles PNG export and share functionality for scatter charts
  */
 
-const EXPORT_MIN_SCALE = 16;
-const EXPORT_MAX_DIM = 16000;
-const EXPORT_MAX_PIXELS = 100_000_000;
-
 /**
- * Compute a safe export scale
+ * Get chart SVG and convert to high-resolution image URI
+ * @param {Object} chart - Google Charts instance
+ * @param {HTMLElement} chartContainer - Chart container element
+ * @returns {Promise<Object>} Object with uri, width, height, and svgBlobUrl
  */
-function computeSafeExportScale(origW, origH, desiredScale) {
-  if (!origW || !origH || !isFinite(desiredScale) || desiredScale <= 0) return 1;
-  const maxDimScale = Math.min(EXPORT_MAX_DIM / origW, EXPORT_MAX_DIM / origH);
-  const maxAreaScale = Math.sqrt(EXPORT_MAX_PIXELS / (origW * origH));
-  const allowed = Math.max(1, Math.min(desiredScale, maxDimScale, maxAreaScale));
-  if (allowed < desiredScale) {
-    console.warn(`Export scale ${desiredScale} reduced to ${allowed} to avoid huge canvas`);
-  }
-  return allowed;
+function getChartImageURI(chart, chartContainer) {
+  return new Promise((resolve, reject) => {
+    const svgEl = chartContainer ? chartContainer.querySelector('svg') : null;
+    if (!svgEl) {
+      return reject(new Error("Chart SVG element not found."));
+    }
+
+    try {
+      const origW = parseInt(svgEl.getAttribute('width')) || chartContainer.offsetWidth || 800;
+      const origH = parseInt(svgEl.getAttribute('height')) || chartContainer.offsetHeight || 400;
+
+      // Clone the visible SVG and scale it for high resolution
+      const exportScale = 3; // Use a fixed high-res scale
+      const clonedSvg = svgEl.cloneNode(true);
+      if (!clonedSvg.getAttribute('viewBox')) {
+        clonedSvg.setAttribute('viewBox', `0 0 ${origW} ${origH}`);
+      }
+      clonedSvg.setAttribute('width', Math.round(origW * exportScale));
+      clonedSvg.setAttribute('height', Math.round(origH * exportScale));
+
+      // Create a blob from the SVG string and generate an object URL
+      const svgString = new XMLSerializer().serializeToString(clonedSvg);
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        resolve({
+          uri: img.src,
+          width: img.width,
+          height: img.height,
+          svgBlobUrl: url // Pass the blob URL for cleanup
+        });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to load SVG as an image."));
+      };
+      img.src = url;
+
+    } catch (err) {
+      reject(new Error(`SVG processing failed: ${err.message}`));
+    }
+  });
 }
 
 /**
- * Generate chart image as PNG
+ * Generate comprehensive chart image with title, legend, and footer
  * @returns {Promise<string>} Base64 encoded PNG data URL
  */
 async function generateChartImage() {
-  return new Promise((resolve, reject) => {
-    const chart = window.ChartRenderer.getChartInstance();
-    const chartData = window.ChartRenderer.getCurrentChartData();
-    
-    if (!chart || !chartData) {
-      reject(new Error('No chart available to export'));
-      return;
-    }
-
-    const chartDiv = document.getElementById('chart_div');
-    const origW = chartDiv.offsetWidth || 1200;
-    const origH = chartDiv.offsetHeight || 800;
-    
-    const desiredScale = Math.max(window.devicePixelRatio || 1, EXPORT_MIN_SCALE);
-    const scale = computeSafeExportScale(origW, origH, desiredScale);
-    
-    const exportW = Math.round(origW * scale);
-    const exportH = Math.round(origH * scale);
-
-    // Create temporary chart for high-res export
-    const tempDiv = document.createElement('div');
-    tempDiv.style.width = exportW + 'px';
-    tempDiv.style.height = exportH + 'px';
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.left = '-99999px';
-    tempDiv.style.top = '-99999px';
-    document.body.appendChild(tempDiv);
-
-    const tempChart = new google.visualization.ScatterChart(tempDiv);
-    
-    // Clone and adjust options for export
-    const exportOptions = JSON.parse(JSON.stringify(chartData.options));
-    exportOptions.width = exportW;
-    exportOptions.height = exportH;
-    exportOptions.chartArea = exportOptions.chartArea || {};
-    exportOptions.chartArea.width = '75%';
-    exportOptions.chartArea.height = '70%';
-
-    google.visualization.events.addListener(tempChart, 'ready', function() {
-      try {
-        const uri = tempChart.getImageURI();
-        document.body.removeChild(tempDiv);
-        resolve(uri);
-      } catch (error) {
-        document.body.removeChild(tempDiv);
-        reject(error);
-      }
-    });
-
+  return new Promise(async (resolve, reject) => {
+    let svgBlobUrl = null; // To hold the temporary blob URL for cleanup
     try {
-      tempChart.draw(chartData.data, exportOptions);
+      const chart = window.ChartRenderer.getChartInstance();
+      const chartData = window.ChartRenderer.getCurrentChartData();
+      
+      if (!chart || !chartData) {
+        return reject(new Error('Chart not available'));
+      }
+
+      const chartContainer = document.getElementById('chart_div');
+      
+      // Get the high-resolution chart URI from the visible chart's SVG
+      const { uri, width: chartWidth, height: chartHeight, svgBlobUrl: blobUrl } = await getChartImageURI(chart, chartContainer);
+      svgBlobUrl = blobUrl; // Store for cleanup
+
+      if (!uri) {
+        return reject(new Error('Failed to generate chart image URI'));
+      }
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const pollutantName = chartData.pollutantName;
+          const pollutantUnit = chartData.pollutantUnit;
+          const year = chartData.year;
+          const padding = 50;
+          const yearHeight = 60; // Space for year above title
+          const titleHeight = 100; // Increased space for larger title
+          const subtitleHeight = 40; // Space for subtitle line
+          const footerHeight = 100;
+
+          // Measure the custom HTML legend to determine its height
+          const legendClone = document.getElementById('customLegend').cloneNode(true);
+          legendClone.style.position = 'absolute';
+          legendClone.style.visibility = 'hidden';
+          legendClone.style.width = (chartWidth - (padding * 2)) + 'px';
+          document.body.appendChild(legendClone);
+          const legendHeight = legendClone.offsetHeight + 30; // Add margin
+          document.body.removeChild(legendClone);
+
+          // Set up the final canvas dimensions
+          const canvas = document.createElement('canvas');
+          const canvasWidth = chartWidth + padding * 2;
+          const canvasHeight = yearHeight + titleHeight + legendHeight + chartHeight + footerHeight + padding * 2;
+          canvas.width = canvasWidth;
+          canvas.height = canvasHeight;
+          const ctx = canvas.getContext('2d');
+
+          // Draw all elements onto the canvas
+
+          // Background
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+          // Year - Above title (larger than title)
+          ctx.font = 'bold 72px system-ui, sans-serif'; // Larger than title
+          ctx.fillStyle = '#000000';
+          ctx.textAlign = 'center';
+          ctx.fillText(year, canvasWidth / 2, padding + 50);
+
+          // Title - Pollutant name
+          ctx.font = 'bold 56px system-ui, sans-serif'; // Smaller than year
+          ctx.fillStyle = '#000000';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${pollutantName}${pollutantUnit ? " - " + pollutantUnit : ""}`, canvasWidth / 2, padding + yearHeight + 55);
+
+          // Custom Legend - Larger Font and Dots (starts after title area)
+          const legendDiv = document.getElementById('customLegend');
+          // Get only direct child spans (the legend items), not nested spans (the dots)
+          const allItems = [...legendDiv.children].filter(el => el.tagName === 'SPAN');
+          
+          // Get the current visibility state from chart-renderer.js
+          const visibility = window.seriesVisibility || [];
+          
+          console.log('PNG Generation - Total legend items:', allItems.length);
+          console.log('PNG Generation - Visibility array:', visibility);
+          
+          // Filter items: include only if visible
+          const items = allItems.filter((item, index) => {
+            const isVisible = visibility[index] !== false; // true or undefined = visible
+            console.log(`Item ${index}: "${item.textContent.trim()}" - isVisible: ${isVisible}`);
+            return isVisible;
+          });
+          
+          console.log('PNG Generation - Filtered items count:', items.length);
+          
+          let legendY = padding + yearHeight + titleHeight + 50; // Increased gap from 20 to 50
+          const legendRowHeight = 55; // Increased for larger font
+          const maxW = canvasWidth - padding * 2;
+          const rowItems = [];
+          let row = [], rowW = 0;
+
+          items.forEach((it) => {
+            const dot = it.querySelector('span');
+            if (!dot) {
+              console.log('PNG Generation - Skipping item without dot:', it.textContent);
+              return;
+            }
+            const text = it.textContent.trim();
+            ctx.font = '600 42px system-ui, sans-serif'; // Larger legend font
+            const textW = ctx.measureText(text).width;
+            const w = textW + 80; // dot size + padding
+            if (rowW + w > maxW && row.length) {
+              rowItems.push({ row, rowW });
+              row = [];
+              rowW = 0;
+            }
+            row.push({ dotColor: dot.style.backgroundColor, text });
+            rowW += w;
+          });
+          if (row.length) rowItems.push({ row, rowW });
+
+          console.log('PNG Generation - Row items created:', rowItems.length);
+
+          rowItems.forEach(({ row, rowW }) => {
+            let x = (canvasWidth - rowW) / 2;
+            row.forEach(({ dotColor, text }) => {
+              ctx.beginPath();
+              ctx.arc(x + 18, legendY - 15, 18, 0, 2 * Math.PI); // Larger dots to match font
+              ctx.fillStyle = dotColor;
+              ctx.fill();
+              ctx.font = '600 42px system-ui, sans-serif'; // Larger legend font
+              ctx.fillStyle = '#000000';
+              ctx.textAlign = 'left';
+              ctx.fillText(text, x + 50, legendY);
+              x += ctx.measureText(text).width + 80;
+            });
+            legendY += legendRowHeight;
+          });
+
+          // Calculate conversion factor and EF values BEFORE drawing text
+          // Determine conversion factor based on pollutant unit
+          let conversionFactor;
+          switch(pollutantUnit.toLowerCase()) {
+            case 't':
+            case 'tonnes':
+              conversionFactor = 1000;
+              break;
+            case 'grams international toxic equivalent':
+              conversionFactor = 1000;
+              break;
+            case 'kilotonne':
+            case 'kilotonne/kt co2 equivalent':
+            case 'kt co2 equivalent':
+              conversionFactor = 1000000;
+              break;
+            case 'kg':
+              conversionFactor = 1;
+              break;
+            default:
+              conversionFactor = 1000000;
+          }
+
+          // Get visible data points for EF calculation
+          const dataPoints = chartData.dataPoints || [];
+          const visibleDataPoints = dataPoints.filter((point, index) => {
+            const uniqueGroups = [...new Set(dataPoints.map(p => p.groupName))];
+            const groupIndex = uniqueGroups.indexOf(point.groupName);
+            return window.seriesVisibility && window.seriesVisibility[groupIndex] !== false;
+          });
+
+          // Calculate all EF values for scaling
+          const allEFs = visibleDataPoints.map(p => 
+            p.EF !== undefined ? p.EF : (p.activityData !== 0 ? (p.pollutantValue / p.activityData) * conversionFactor : 0)
+          );
+          const maxEF = Math.max(...allEFs);
+          const minEF = Math.min(...allEFs.filter(ef => ef > 0));
+
+          // Determine if logarithmic scaling should be used
+          const efRatio = maxEF / minEF;
+          const useLogScale = efRatio > 1000;
+
+          // EF explanation text - place below legend (not on chart)
+          const efTextY = legendY + 20; // 20px below the last legend row
+          ctx.font = '36px system-ui, sans-serif'; // Smaller than title/legend
+          ctx.fillStyle = '#555555';
+          ctx.textAlign = 'center';
+          
+          // Update text based on scaling type
+          if (useLogScale) {
+            ctx.fillText('Bubble size proportional to log₁₀(Emission Factor) — logarithmic scale used due to wide EF range', canvasWidth / 2, efTextY);
+          } else {
+            ctx.fillText('Bubble size proportional to Emission Factor (area-scaled, radius = √EF)', canvasWidth / 2, efTextY);
+          }
+
+          // Chart Image - with precise clipping on top and right only (no borders there)
+          const chartY = padding + yearHeight + titleHeight + legendHeight + 60; // Add space for EF text
+          
+          // Chart area boundaries from chart-renderer.js (scaled by exportScale = 3)
+          const exportScale = 3;
+          const chartAreaTop = 70 * exportScale;      // Reduced from 80 to preserve top bubbles
+          const chartAreaRight = 80 * exportScale;    // right: 80 in chart options
+          
+          // Save context state before clipping
+          ctx.save();
+          
+          // Create clipping region - clip only top and right edges
+          // Left and bottom are fine (they have axis borders with labels/ticks)
+          const clipX = padding;  // Start from left edge (don't clip left)
+          const clipY = chartY + chartAreaTop;  // Clip from chartArea top
+          const clipW = chartWidth - chartAreaRight;  // Clip at chartArea right
+          const clipH = chartHeight - chartAreaTop;  // Full height from top clip down (don't clip bottom)
+          
+          ctx.beginPath();
+          ctx.rect(clipX, clipY, clipW, clipH);
+          ctx.clip();
+          
+          // Draw chart (it will be clipped to remove top/right edge gridlines)
+          ctx.drawImage(img, padding, chartY, chartWidth, chartHeight);
+          
+          // Restore context to remove clipping
+          ctx.restore();
+
+          // Draw EF labels on bubbles
+          // (visibleDataPoints, conversionFactor, allEFs, maxEF, minEF, efRatio, useLogScale already calculated above)
+
+          // Get axis ranges from chart options
+          const chartOptions = chartData.options;
+          const xMax = chartOptions.hAxis.viewWindow.max;
+          const yMax = chartOptions.vAxis.viewWindow.max;
+          
+          // Use existing chartArea variables (already defined above for clipping)
+          // chartAreaTop and chartAreaRight are already defined as 80 * exportScale
+          const plotWidth = chartWidth - (150 * exportScale) - chartAreaRight;
+          const plotHeight = chartHeight - chartAreaTop - (120 * exportScale);
+
+          // Calculate scaleFactor exactly as chart-renderer.js does
+          const targetMaxRadius = 90;
+          const targetMinRadius = 5;
+          let scaleFactor;
+          
+          if (useLogScale) {
+            const maxLog = Math.log10(maxEF);
+            const minLog = Math.log10(minEF);
+            const logRange = maxLog - minLog;
+            scaleFactor = (targetMaxRadius - targetMinRadius) / logRange;
+          } else {
+            scaleFactor = targetMaxRadius / Math.sqrt(maxEF);
+            const minRadiusWithMaxScale = scaleFactor * Math.sqrt(minEF);
+            
+            if (minRadiusWithMaxScale < targetMinRadius) {
+              scaleFactor = targetMinRadius / Math.sqrt(minEF);
+            }
+          }
+
+          visibleDataPoints.forEach(point => {
+            // Calculate emission factor using correct conversion factor
+            const emissionFactor = point.EF !== undefined ? point.EF : 
+              (point.activityData !== 0 ? (point.pollutantValue / point.activityData) * conversionFactor : 0);
+            
+            // Skip if no valid data
+            if (!point || typeof point.activityData !== 'number' || typeof point.pollutantValue !== 'number') {
+              return;
+            }
+            
+            // Calculate bubble position in pixels
+            const xRatio = point.activityData / xMax;
+            const yRatio = 1 - (point.pollutantValue / yMax); // Invert Y axis
+            const bubbleX = padding + (150 * exportScale) + (xRatio * plotWidth);
+            const bubbleY = chartY + chartAreaTop + (yRatio * plotHeight);
+            
+            // Calculate bubble radius using EXACT same formula as chart-renderer.js (including log scale)
+            let bubbleRadius;
+            if (useLogScale && emissionFactor > 0) {
+              const logEF = Math.log10(emissionFactor);
+              const logMin = Math.log10(minEF);
+              const logMax = Math.log10(maxEF);
+              const logPosition = (logEF - logMin) / (logMax - logMin);
+              const radius = targetMinRadius + (logPosition * (targetMaxRadius - targetMinRadius));
+              bubbleRadius = radius * exportScale;
+            } else {
+              const sqrtEF = Math.sqrt(emissionFactor);
+              bubbleRadius = (scaleFactor * sqrtEF) * exportScale;
+            }
+            
+            // Label text with 8 decimal places for small values
+            const efDisplay = emissionFactor < 0.01 ? emissionFactor.toFixed(8) : emissionFactor.toFixed(2);
+            const labelText = `${efDisplay} g/GJ`;
+            
+            // Always place label to the right of the bubble, always black, no leader line
+            ctx.font = 'bold 56px system-ui, sans-serif'; // Double the previous 28px
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            
+            // Position label to the right of bubble with 20px padding
+            const labelX = bubbleX + bubbleRadius + 20;
+            const labelY = bubbleY;
+            
+            ctx.fillText(labelText, labelX, labelY);
+          });
+
+          // Draw Logo and Footer
+          const logo = new Image();
+          logo.crossOrigin = 'anonymous';
+          logo.src = '../../Shared Resources/images/CIC - Square - Border - Words - Alpha 360x360.png';
+
+          const finishGeneration = () => {
+            ctx.font = '28px system-ui, sans-serif';
+            ctx.fillStyle = '#555';
+            ctx.textAlign = 'center';
+            
+            // Check if footer needs to wrap
+            const fullFooterText = "© Crown 2025 copyright Defra & DESNZ via naei.energysecurity.gov.uk licensed under the Open Government Licence (OGL).";
+            const footerTextWidth = ctx.measureText(fullFooterText).width;
+            
+            let footerY = chartY + chartHeight; // Directly after chart (0px gap)
+            
+            if (footerTextWidth > canvasWidth - 40) {
+              // Wrap: split after "gov.uk"
+              const footerLine1 = "© Crown 2025 copyright Defra & DESNZ via naei.energysecurity.gov.uk";
+              const footerLine2 = "licensed under the Open Government Licence (OGL).";
+              ctx.fillText(footerLine1, canvasWidth / 2, footerY);
+              ctx.fillText(footerLine2, canvasWidth / 2, footerY + 35);
+              footerY += 35; // Adjust for wrapped line
+            } else {
+              // Single line
+              ctx.fillText(fullFooterText, canvasWidth / 2, footerY);
+            }
+
+            const channelY = footerY + 35; // Reduced from 40 to 35
+            const boldText = "Youtube: ";
+            const normalText = "youtube.com/@chronicillnesschannel";
+            
+            ctx.font = 'bold 28px system-ui, sans-serif';
+            const boldWidth = ctx.measureText(boldText).width;
+            ctx.font = '28px system-ui, sans-serif';
+            const normalWidth = ctx.measureText(normalText).width;
+            const totalWidth = boldWidth + normalWidth;
+            
+            // Check if channel text fits on one line
+            if (totalWidth > canvasWidth - 40) {
+              // Wrap: put URL on separate line
+              ctx.textAlign = 'center';
+              ctx.font = 'bold 28px system-ui, sans-serif';
+              ctx.fillText(boldText.trim(), canvasWidth / 2, channelY);
+              ctx.font = '28px system-ui, sans-serif';
+              ctx.fillText(normalText, canvasWidth / 2, channelY + 35);
+            } else {
+              // Single line
+              const startX = (canvasWidth - totalWidth) / 2;
+              ctx.textAlign = 'left';
+              ctx.font = 'bold 28px system-ui, sans-serif';
+              ctx.fillText(boldText, startX, channelY);
+              ctx.font = '28px system-ui, sans-serif';
+              ctx.fillText(normalText, startX + boldWidth, channelY);
+            }
+            
+            const dataURL = canvas.toDataURL('image/png');
+            resolve(dataURL);
+          };
+
+          logo.onload = () => {
+            try {
+              const logoSize = 200; // Logo size
+              ctx.drawImage(logo, canvasWidth - logoSize - 30, 30, logoSize, logoSize);
+            } catch (e) {
+              console.warn('Logo failed to draw, continuing without logo:', e);
+            }
+            finishGeneration();
+          };
+
+          logo.onerror = () => {
+            console.warn('Logo failed to load, continuing without logo');
+            finishGeneration();
+          };
+
+        } catch (error) {
+          reject(error);
+        } finally {
+          // Final cleanup of the temporary URL
+          if (svgBlobUrl) {
+            URL.revokeObjectURL(svgBlobUrl);
+          }
+        }
+      };
+      img.onerror = (e) => {
+        if (svgBlobUrl) {
+          URL.revokeObjectURL(svgBlobUrl);
+        }
+        reject(new Error('Failed to load chart image for generation'));
+      };
+      img.src = uri;
     } catch (error) {
-      document.body.removeChild(tempDiv);
+      if (svgBlobUrl) {
+        URL.revokeObjectURL(svgBlobUrl);
+      }
       reject(error);
     }
   });

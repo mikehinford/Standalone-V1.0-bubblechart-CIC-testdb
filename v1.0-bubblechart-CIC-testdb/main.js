@@ -236,36 +236,55 @@ async function renderInitialView() {
         initialComparisonFlags = [];
         // Add default groups if none are in the URL
         const allGroups = window.allGroupsList || [];
-        console.log('Adding default groups from', allGroups.length, 'available groups');
+        console.log('Adding default groups from', allGroups.length, 'available groups:', allGroups);
         
         // Find specific "Ecodesign Stove - Ready To Burn" group
-        const ecodesignGroups = allGroups.filter(g => 
+        const ecodesignGroup = allGroups.find(g => 
           g === 'Ecodesign Stove - Ready To Burn'
         );
-        console.log('Found Ecodesign Stove - Ready To Burn group:', ecodesignGroups);
+        console.log('Found Ecodesign Stove - Ready To Burn group:', ecodesignGroup);
         
         // Find "Gas Boilers"  
-        const gasBoilerGroups = allGroups.filter(g => 
-          g.toLowerCase().includes('gas boilers')
+        const gasBoilerGroup = allGroups.find(g => 
+          g.toLowerCase().includes('gas boiler')
         );
-        console.log('Found Gas Boilers groups:', gasBoilerGroups);
+        console.log('Found Gas Boilers group:', gasBoilerGroup);
         
-        if (ecodesignGroups.length > 0) {
-          console.log('Adding Ecodesign Stove Ready To Burn group:', ecodesignGroups[0]);
-          addGroupSelector(ecodesignGroups[0], false);
+        // Always try to add both default groups
+        if (ecodesignGroup) {
+          console.log('Adding Ecodesign Stove Ready To Burn group:', ecodesignGroup);
+          addGroupSelector(ecodesignGroup, false);
+        } else {
+          console.warn('Could not find Ecodesign Stove - Ready To Burn group');
         }
         
-        if (gasBoilerGroups.length > 0) {
-          console.log('Adding Gas Boilers group:', gasBoilerGroups[0]);
-          addGroupSelector(gasBoilerGroups[0], false);
+        if (gasBoilerGroup) {
+          console.log('Adding Gas Boilers group:', gasBoilerGroup);
+          addGroupSelector(gasBoilerGroup, false);
+        } else {
+          console.warn('Could not find Gas Boilers group');
         }
         
-        // If we didn't find the specific groups, add some fallbacks
-        if (ecodesignGroups.length === 0 && gasBoilerGroups.length === 0 && allGroups.length > 0) {
+        // If we didn't find either specific group, add first 2 available groups
+        if (!ecodesignGroup && !gasBoilerGroup && allGroups.length > 0) {
           console.log('Adding fallback groups:', allGroups.slice(0, 2));
           addGroupSelector(allGroups[0], false);
           if (allGroups.length > 1) {
             addGroupSelector(allGroups[1], false);
+          }
+        } else if (!ecodesignGroup && gasBoilerGroup && allGroups.length > 0) {
+          // If we only found Gas Boilers, add first available group as well
+          const firstGroup = allGroups[0];
+          if (firstGroup !== gasBoilerGroup) {
+            console.log('Adding first group as fallback:', firstGroup);
+            addGroupSelector(firstGroup, false);
+          }
+        } else if (ecodesignGroup && !gasBoilerGroup && allGroups.length > 1) {
+          // If we only found Ecodesign, add second available group as well
+          const secondGroup = allGroups.find(g => g !== ecodesignGroup);
+          if (secondGroup) {
+            console.log('Adding second group as fallback:', secondGroup);
+            addGroupSelector(secondGroup, false);
           }
         }
       }
@@ -407,6 +426,7 @@ function addGroupSelector(defaultValue = "", usePlaceholder = true){
   const container = document.getElementById('groupContainer');
   const div = document.createElement('div');
   div.className = 'groupRow';
+  div.draggable = true; // Make row draggable
 
   // drag handle (like linechart)
   const dragHandle = document.createElement('span');
@@ -426,6 +446,39 @@ function addGroupSelector(defaultValue = "", usePlaceholder = true){
   handleBtn.title = 'Drag to reorder (or focus and use Arrow keys)';
   handleBtn.textContent = '⠿';
   handleBtn.style.marginRight = '6px';
+  
+  // Keyboard handlers for reordering when handleBtn is focused
+  handleBtn.addEventListener('keydown', (e) => {
+    try {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        let prev = div.previousElementSibling;
+        while (prev && !prev.classList.contains('groupRow')) prev = prev.previousElementSibling;
+        if (prev) {
+          container.insertBefore(div, prev);
+          refreshGroupDropdowns();
+          refreshButtons();
+          updateChart();
+          // Move focus back to the handle for continued keyboard moves
+          handleBtn.focus();
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        let next = div.nextElementSibling;
+        while (next && !next.classList.contains('groupRow')) next = next.nextElementSibling;
+        if (next) {
+          container.insertBefore(div, next.nextElementSibling);
+          refreshGroupDropdowns();
+          refreshButtons();
+          updateChart();
+          handleBtn.focus();
+        }
+      }
+    } catch (err) {
+      console.warn('Keyboard reorder failed', err);
+    }
+  });
+  
   controlWrap.appendChild(handleBtn);
 
   // group select
@@ -470,6 +523,7 @@ function addGroupSelector(defaultValue = "", usePlaceholder = true){
   div.appendChild(controlWrap);
 
   container.appendChild(div);
+  addDragAndDropHandlers(div); // Add drag-and-drop event listeners
   
   // Delay the refresh to avoid conflicts during initialization
   setTimeout(() => {
@@ -546,32 +600,34 @@ function refreshButtons() {
       row.appendChild(removeBtn);
     }
     
-    // Always add comparison checkbox for all groups (positioned to align with heading)
-    const comparisonCheckbox = document.createElement('input');
-    comparisonCheckbox.type = 'checkbox';
-    comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
-    
-    // Determine checked state
-    const rowIndex = Array.from(rows).indexOf(row);
-    
-    // Priority: 1) Preserve existing state, 2) Use URL flags on initial load, 3) Default to unchecked
-    if (existingCheckbox) {
-      // Preserve the current state for existing rows
-      comparisonCheckbox.checked = wasChecked;
-    } else if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
-      // Use comparison flag from URL (on initial load only)
-      comparisonCheckbox.checked = initialComparisonFlags[rowIndex];
-    } else {
-      // Default to unchecked for new groups
-      comparisonCheckbox.checked = false;
+    // Add comparison checkbox only if there are 2 or more groups (like remove button)
+    if (rows.length >= 2) {
+      const comparisonCheckbox = document.createElement('input');
+      comparisonCheckbox.type = 'checkbox';
+      comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
+      
+      // Determine checked state
+      const rowIndex = Array.from(rows).indexOf(row);
+      
+      // Priority: 1) Preserve existing state, 2) Use URL flags on initial load, 3) Default to unchecked
+      if (existingCheckbox) {
+        // Preserve the current state for existing rows
+        comparisonCheckbox.checked = wasChecked;
+      } else if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
+        // Use comparison flag from URL (on initial load only)
+        comparisonCheckbox.checked = initialComparisonFlags[rowIndex];
+      } else {
+        // Default to unchecked for new groups
+        comparisonCheckbox.checked = false;
+      }
+      
+      comparisonCheckbox.style.width = '18px';
+      comparisonCheckbox.style.height = '18px';
+      comparisonCheckbox.style.marginLeft = '50px'; // Increased from 10px to move right and center under heading
+      comparisonCheckbox.title = 'Include in comparison statement';
+      comparisonCheckbox.addEventListener('change', refreshCheckboxes);
+      row.appendChild(comparisonCheckbox);
     }
-    
-    comparisonCheckbox.style.width = '18px';
-    comparisonCheckbox.style.height = '18px';
-    comparisonCheckbox.style.marginLeft = '50px'; // Increased from 10px to move right and center under heading
-    comparisonCheckbox.title = 'Include in comparison statement';
-    comparisonCheckbox.addEventListener('change', refreshCheckboxes);
-    row.appendChild(comparisonCheckbox);
   });
   
   // Clear initialComparisonFlags after first use
@@ -667,8 +723,8 @@ function setupGroupSelector() {
   const container = document.getElementById('groupContainer');
   container.innerHTML = '';
   
-  // Add initial group selector
-  addGroupSelector();
+  // Don't add initial group here - let renderInitialView handle defaults
+  // addGroupSelector();
 }
 
 /**
@@ -1064,6 +1120,40 @@ function loadFromURLParameters() {
   }
 }
 
+/* ---------------- Drag and drop handlers ---------------- */
+function addDragAndDropHandlers(div){
+  div.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', '');
+    div.classList.add('dragging');
+  });
+  div.addEventListener('dragend', () => div.classList.remove('dragging'));
+  div.addEventListener('dragover', e => {
+    e.preventDefault();
+    const container = document.getElementById('groupContainer');
+    const dragging = container.querySelector('.dragging');
+    if (!dragging) return;
+    const after = getDragAfterElement(container, e.clientY);
+    const addBtn = container.querySelector('.add-btn');
+    if (!after || after === addBtn) container.insertBefore(dragging, addBtn);
+    else container.insertBefore(dragging, after);
+  });
+  div.addEventListener('drop', () => { 
+    refreshGroupDropdowns(); 
+    refreshButtons();
+    updateChart(); 
+  });
+}
+
+function getDragAfterElement(container, y){
+  const draggable = [...container.querySelectorAll('.groupRow:not(.dragging)')];
+  return draggable.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
 // Listen for parent window messages
 // Listen for parent window messages (if needed for future features)  
 window.addEventListener('message', (event) => {
@@ -1086,7 +1176,26 @@ function alignComparisonHeader() {
   const header = document.getElementById('comparisonHeader');
   const checkboxes = document.querySelectorAll('.comparison-checkbox');
   
-  if (header && checkboxes.length > 0) {
+  // Hide header if there are fewer than 2 groups
+  const rows = document.querySelectorAll('.groupRow');
+  console.log('alignComparisonHeader: rows.length =', rows.length, 'checkboxes.length =', checkboxes.length);
+  
+  if (!header) {
+    console.log('alignComparisonHeader: header element not found');
+    return;
+  }
+  
+  if (rows.length < 2) {
+    console.log('alignComparisonHeader: hiding header (rows < 2)');
+    header.style.display = 'none';
+    return;
+  }
+  
+  // Only show and position header if we have checkboxes to align with
+  if (checkboxes.length > 0) {
+    console.log('alignComparisonHeader: showing and positioning header (rows >= 2, checkboxes exist)');
+    header.style.display = 'block';
+    
     const firstCheckbox = checkboxes[0];
     const containerRect = header.parentElement.getBoundingClientRect();
     
@@ -1106,7 +1215,11 @@ function alignComparisonHeader() {
     const firstCheckboxRect = firstCheckbox.getBoundingClientRect();
     const topOffset = firstCheckboxRect.top - containerRect.top - 45; // Increased from 35px to 45px
     
+    console.log('alignComparisonHeader: positioning header at left:', leftOffset, 'top:', topOffset);
     header.style.left = leftOffset + 'px';
     header.style.top = topOffset + 'px';
+  } else {
+    console.log('alignComparisonHeader: checkboxes not found yet, hiding header temporarily');
+    header.style.display = 'none';
   }
 }

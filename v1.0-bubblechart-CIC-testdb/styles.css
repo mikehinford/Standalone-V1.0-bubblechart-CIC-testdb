@@ -392,24 +392,35 @@
 }
 
 /* Restore original colors */
+/* Debug backgrounds removed - they interfere with chart rendering
 body {
-  background: #ffebee !important; /* Light Red */
+  background: #ffebee !important;
 }
 
 #mainContent {
-  background: #e8f5e9; /* Light Green */
+  background: #e8f5e9;
 }
 
 .chart-wrapper {
-  background: #e3f2fd; /* Light Blue */
+  background: #e3f2fd;
 }
 
 #chartTitle {
-  background: #fff9c4; /* Light Yellow */
+  background: #fff9c4;
 }
 
 #chart_div {
-  background: #f3e5f5; /* Light Purple */
+  background: #f3e5f5;
+}
+*/
+
+/* Override any cached debug styles */
+#chart_div {
+  background: white !important;
+}
+
+.chart-wrapper {
+  background: white;
 }
 
 /* Comparison statement pill styling */
@@ -452,3 +463,12 @@ body {
 .notification.success {
   background-color: #2ecc71;
 }
+
+/* Google Charts tooltip styling - add white background */
+.google-visualization-tooltip {
+  background-color: white !important;
+  border: 1px solid #ccc !important;
+  padding: 8px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+

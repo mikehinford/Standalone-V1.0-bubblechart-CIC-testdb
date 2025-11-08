@@ -7,6 +7,9 @@ let chart = null;
 let currentChartData = null;
 let currentOptions = null;
 let googleChartsReady = false;
+let seriesVisibility = []; // Track which series are visible
+let useLogScale = false; // Track whether logarithmic scaling is being used
+window.seriesVisibility = seriesVisibility; // Expose for export.js
 
 // Load Google Charts and set up callback
 google.charts.load('current', {packages: ['corechart']});
@@ -45,6 +48,22 @@ function drawBubbleChart(year, pollutantId, groupIds) {
     return;
   }
 
+  // Filter data points based on series visibility
+  // Ensure visibility array is correctly sized
+  if (seriesVisibility.length !== groupIds.length) {
+    seriesVisibility = Array(groupIds.length).fill(true);
+    window.seriesVisibility = seriesVisibility;
+  }
+
+  // Get unique group names to match with visibility array
+  const uniqueGroups = [...new Set(dataPoints.map(p => p.groupName))];
+  const visibleDataPoints = dataPoints.filter(point => {
+    const groupIndex = uniqueGroups.indexOf(point.groupName);
+    return groupIndex >= 0 && seriesVisibility[groupIndex];
+  });
+
+  console.log(`Filtered ${dataPoints.length} points to ${visibleDataPoints.length} visible points`);
+
   // Prepare Google DataTable for scatter chart with bubble-like styling
   const data = new google.visualization.DataTable();
   data.addColumn('number', 'Activity Data (TJ)');
@@ -53,55 +72,109 @@ function drawBubbleChart(year, pollutantId, groupIds) {
   data.addColumn({type: 'string', role: 'style'});
 
   // Add data rows with emission factor calculation and sizing
-  console.log('Adding', dataPoints.length, 'rows to bubble-style scatter chart data');
+  console.log('Adding', visibleDataPoints.length, 'rows to bubble-style scatter chart data');
   
-  // Calculate all EF values first to determine dynamic scale factor
-  const allEFs = dataPoints.map(p => p.EF !== undefined ? p.EF : (p.activityData !== 0 ? (p.pollutantValue / p.activityData) * 1000000 : 0));
+  // Determine conversion factor based on pollutant unit (BEFORE calculating EFs)
+  const pollutantUnit = window.supabaseModule.getPollutantUnit(pollutantId);
+  let conversionFactor;
+  switch(pollutantUnit.toLowerCase()) {
+    case 't':
+    case 'tonnes':
+      conversionFactor = 1000; // t × 10^3 → g/GJ
+      break;
+    case 'grams international toxic equivalent':
+      conversionFactor = 1000; // g × 10^3 → g/GJ (since 1 TJ = 1000 GJ)
+      break;
+    case 'kilotonne':
+    case 'kilotonne/kt co2 equivalent':
+    case 'kt co2 equivalent':
+      conversionFactor = 1000000; // kt × 10^6 → g/GJ
+      break;
+    case 'kg':
+      conversionFactor = 1; // kg × 10^0 → g/GJ (kg/TJ = g/GJ)
+      break;
+    default:
+      conversionFactor = 1000000; // Default fallback
+      console.warn(`Unknown pollutant unit: ${pollutantUnit}, using default conversion`);
+  }
+  
+  // Calculate all EF values first to determine dynamic scale factor (use visible points only)
+  const allEFs = visibleDataPoints.map(p => p.EF !== undefined ? p.EF : (p.activityData !== 0 ? (p.pollutantValue / p.activityData) * conversionFactor : 0));
   const maxEF = Math.max(...allEFs);
   const minEF = Math.min(...allEFs.filter(ef => ef > 0)); // Exclude zeros
   
-  // Smart dynamic scaling:
-  // 1. Try to scale so max bubble is 90px
-  // 2. If that would make min bubble < 5px, scale so min bubble is 5px instead
+  // Use logarithmic scaling for bubble sizes when EF range is extreme (>1000x)
+  // This is standard in atmospheric science and emission inventories
+  const efRatio = maxEF / minEF;
+  useLogScale = efRatio > 1000; // Update module-level variable
+  
   const targetMaxRadius = 90;
   const targetMinRadius = 5;
   
-  let scaleFactor = targetMaxRadius / Math.sqrt(maxEF);
-  const minRadiusWithMaxScale = scaleFactor * Math.sqrt(minEF);
-  
-  if (minRadiusWithMaxScale < targetMinRadius) {
-    // Min would be too small, so scale based on min instead
-    scaleFactor = targetMinRadius / Math.sqrt(minEF);
-    console.log(`Dynamic scaling: Using MIN-based scaling (min would be ${minRadiusWithMaxScale.toFixed(2)}px)`);
+  let scaleFactor;
+  if (useLogScale) {
+    // Logarithmic scale: bubble area ∝ log10(EF)
+    // For log scale with small values (< 1), we work with absolute log values
+    // and scale based on the range of log values
+    const maxLog = Math.log10(maxEF);
+    const minLog = Math.log10(minEF);
+    const logRange = maxLog - minLog; // Total range in log space
+    
+    // Scale factor maps log range to radius range
+    // We'll map the full log range to our target radius range
+    scaleFactor = (targetMaxRadius - targetMinRadius) / logRange;
+    
+    console.log(`Using LOGARITHMIC scaling (ratio ${efRatio.toFixed(0)}:1). Range: ${minEF.toExponential(2)} to ${maxEF.toExponential(2)} g/GJ`);
+    console.log(`Log range: ${minLog.toFixed(2)} to ${maxLog.toFixed(2)}, logRange=${logRange.toFixed(2)}, scaleFactor=${scaleFactor.toFixed(2)}`);
   } else {
-    console.log(`Dynamic scaling: Using MAX-based scaling (min will be ${minRadiusWithMaxScale.toFixed(2)}px)`);
-  }
-  
-  console.log(`maxEF=${maxEF.toFixed(2)}, minEF=${minEF.toFixed(2)}, scaleFactor=${scaleFactor.toFixed(2)}`);
-  
-  dataPoints.forEach((point, index) => {
+    // Linear scale: bubble area ∝ EF
+    scaleFactor = targetMaxRadius / Math.sqrt(maxEF);
+    const minRadiusLinear = scaleFactor * Math.sqrt(minEF);
+    
+    if (minRadiusLinear < targetMinRadius) {
+      scaleFactor = targetMinRadius / Math.sqrt(minEF);
+    }
+    
+    console.log(`Using LINEAR scaling (ratio ${efRatio.toFixed(1)}:1). Range: ${minEF.toFixed(2)} to ${maxEF.toFixed(2)} g/GJ`);
+  }  
+  visibleDataPoints.forEach((point, index) => {
     const color = window.Colors.getColorForGroup(point.groupName);
-    const pollutantUnit = window.supabaseModule.getPollutantUnit(pollutantId);
 
     // Use Emission Factor (EF) directly for bubble size
-    // If EF is already provided in point, use it; otherwise, calculate as before
-    const emissionFactor = point.EF !== undefined ? point.EF : (point.activityData !== 0 ? (point.pollutantValue / point.activityData) * 1000000 : 0);
+    // If EF is already provided in point, use it; otherwise, calculate
+    const emissionFactor = point.EF !== undefined ? point.EF : (point.activityData !== 0 ? (point.pollutantValue / point.activityData) * conversionFactor : 0);
 
-    // Calculate bubble size based on EF with square root scaling
-    // This compresses the range so both large and small EF values are visible
-    // while still maintaining proportional representation
-    const sqrtEF = Math.sqrt(emissionFactor);
-    const radius = scaleFactor * sqrtEF;
+    // Calculate bubble size using logarithmic or linear scaling
+    let radius;
+    if (useLogScale && emissionFactor > 0) {
+      // Logarithmic: map position in log space to radius
+      const logEF = Math.log10(emissionFactor);
+      const logMin = Math.log10(minEF);
+      const logMax = Math.log10(maxEF);
+      
+      // Position in log space (0 to 1)
+      const logPosition = (logEF - logMin) / (logMax - logMin);
+      
+      // Map to radius range (min to max)
+      radius = targetMinRadius + (logPosition * (targetMaxRadius - targetMinRadius));
+    } else {
+      // Linear: radius ∝ sqrt(EF)
+      const sqrtEF = Math.sqrt(emissionFactor);
+      radius = scaleFactor * sqrtEF;
+    }
     
-    // Use calculated radius directly - no minimum or maximum constraints
+    // Use calculated radius directly
     const normalizedRadius = radius;
 
     // Debug logging for first few points
     if (index < 3) {
-      console.log(`Point ${index}: ${point.groupName}, EF=${emissionFactor.toFixed(2)}, sqrtEF=${sqrtEF.toFixed(2)}, radius=${radius.toFixed(2)}, normalized=${normalizedRadius.toFixed(2)}`);
+      console.log(`Point ${index}: ${point.groupName}, EF=${emissionFactor.toExponential(2)}, radius=${radius.toFixed(2)}`);
     }
 
-    const tooltip = `${point.groupName}\nActivity: ${point.activityData.toLocaleString()} TJ\nEmissions: ${point.pollutantValue.toLocaleString()} ${pollutantUnit}\nEmission Factor: ${emissionFactor.toFixed(2)}`;
+    // All EF values are converted to g/GJ
+    // Use more decimal places for very small values
+    const efDisplay = emissionFactor < 0.01 ? emissionFactor.toFixed(8) : emissionFactor.toFixed(2);
+    const tooltip = `${point.groupName}\nActivity: ${point.activityData.toLocaleString()} TJ\nEmissions: ${point.pollutantValue.toLocaleString()} ${pollutantUnit}\nEmission Factor: ${efDisplay} g/GJ`;
 
     data.addRow([
       point.activityData, // X-axis
@@ -115,7 +188,7 @@ function drawBubbleChart(year, pollutantId, groupIds) {
 
   // Chart options
   const pollutantName = window.supabaseModule.getPollutantName(pollutantId);
-  const pollutantUnit = window.supabaseModule.getPollutantUnit(pollutantId);
+  // pollutantUnit already declared above
   const activityUnit = window.supabaseModule.getPollutantUnit(window.supabaseModule.activityDataId);
   
   console.log('Chart renderer - Pollutant Name:', pollutantName);
@@ -161,16 +234,16 @@ function drawBubbleChart(year, pollutantId, groupIds) {
     return;
   }
 
-  // Prepare colors for each group
+  // Prepare colors for each group (use visible data points only)
   const colors = [];
-  const uniqueGroups = [...new Set(dataPoints.map(point => point.groupName))];
-  uniqueGroups.forEach(groupName => {
+  const uniqueGroupsForColors = [...new Set(visibleDataPoints.map(point => point.groupName))];
+  uniqueGroupsForColors.forEach(groupName => {
     colors.push(window.Colors.getColorForGroup(groupName));
   });
 
-  // Calculate axis ranges with padding for bubbles
-  const activityValues = dataPoints.map(p => p.activityData);
-  const pollutantValues = dataPoints.map(p => p.pollutantValue);
+  // Calculate axis ranges with padding for bubbles (use visible data points only)
+  const activityValues = visibleDataPoints.map(p => p.activityData);
+  const pollutantValues = visibleDataPoints.map(p => p.pollutantValue);
   
   const maxActivity = Math.max(...activityValues);
   const maxPollutant = Math.max(...pollutantValues);
@@ -194,18 +267,24 @@ function drawBubbleChart(year, pollutantId, groupIds) {
       fontSize: 0 // Minimize title space
     },
     chartArea: {
-      top: 80,
+      top: 85,  // Slightly increased to avoid gridline at edge
       bottom: 120,
       left: 150,
       right: 80,
-      height: '60%'
+      backgroundColor: 'transparent'
     },
+    backgroundColor: 'transparent',
     height: chartHeight,
+    tooltip: { trigger: 'focus' }, // Enable tooltips on hover
     hAxis: {
       title: xAxisTitle,
       format: 'short',
       gridlines: {
+        color: '#cccccc',  // Darker grey for major gridlines
         count: 5
+      },
+      minorGridlines: {
+        count: 4  // 4 minor gridlines between each major gridline
       },
       titleTextStyle: {
         italic: false
@@ -217,6 +296,13 @@ function drawBubbleChart(year, pollutantId, groupIds) {
     },
     vAxis: {
       title: yAxisTitle,
+      gridlines: {
+        color: '#cccccc',  // Darker grey for major gridlines
+        count: 5
+      },
+      minorGridlines: {
+        count: 4  // 4 minor gridlines between each major gridline
+      },
       viewWindow: {
         min: 0,
         max: maxPollutant + pollutantPadding
@@ -243,6 +329,7 @@ function drawBubbleChart(year, pollutantId, groupIds) {
     year: year,
     pollutantId: pollutantId,
     pollutantName: pollutantName,
+    pollutantUnit: pollutantUnit,
     groupIds: groupIds,
     dataPoints: dataPoints
   };
@@ -264,6 +351,11 @@ function drawBubbleChart(year, pollutantId, groupIds) {
     google.visualization.events.addListener(chart, 'error', (err) => {
       console.error('Google Charts error:', err);
     });
+    
+    // Add select listener to immediately clear any selections
+    google.visualization.events.addListener(chart, 'select', () => {
+      chart.setSelection([]);
+    });
   }
   
   try {
@@ -272,6 +364,9 @@ function drawBubbleChart(year, pollutantId, groupIds) {
 
     // Create custom legend after chart is drawn
     createCustomLegend(chart, data, groupIds, dataPoints);
+    
+    // Add bubble size explanation text overlay at top of chart
+    addBubbleExplanationOverlay();
   } catch (err) {
     console.error('Error calling chart.draw():', err);
   }
@@ -315,35 +410,55 @@ function createCustomLegend(chart, data, groupIds, dataPoints) {
   legendContainer.style.flexWrap = 'wrap';
   legendContainer.style.gap = '10px';
 
-  groupIds.forEach((groupId, index) => {
-    const groupName = dataPoints[index].groupName; // Get group name from dataPoints array
+  // Ensure visibility array is correctly sized
+  if (seriesVisibility.length !== groupIds.length) {
+    seriesVisibility = Array(groupIds.length).fill(true);
+    window.seriesVisibility = seriesVisibility; // Update window reference
+  }
 
-    const legendItem = document.createElement('div');
-    legendItem.className = 'legend-item';
-    legendItem.style.display = 'flex';
+  // Get unique group names
+  const uniqueGroups = [...new Set(dataPoints.map(p => p.groupName))];
+
+  uniqueGroups.forEach((groupName, index) => {
+    const legendItem = document.createElement('span');
+    legendItem.style.display = 'inline-flex';
     legendItem.style.alignItems = 'center';
     legendItem.style.cursor = 'pointer';
-    legendItem.style.fontWeight = 'bold';
-    legendItem.style.margin = '1px';
+    legendItem.style.fontWeight = '600';
+    legendItem.style.margin = '5px 10px';
+    legendItem.style.opacity = seriesVisibility[index] ? '1' : '0.4';
 
     const colorCircle = document.createElement('span');
+    colorCircle.style.display = 'inline-block';
     colorCircle.style.backgroundColor = window.Colors.getColorForGroup(groupName);
     colorCircle.style.width = '12px';
     colorCircle.style.height = '12px';
     colorCircle.style.borderRadius = '50%';
     colorCircle.style.marginRight = '8px';
 
-    const label = document.createElement('span');
-    label.textContent = groupName;
+    const label = document.createTextNode(groupName);
 
     legendItem.appendChild(colorCircle);
     legendItem.appendChild(label);
 
+    // Add click handler to toggle visibility
     legendItem.addEventListener('click', () => {
-      const series = chart.getOption('series');
-      series[index].visibleInLegend = !series[index].visibleInLegend;
-      chart.setOption('series', series);
-      chart.draw(data, currentOptions);
+      seriesVisibility[index] = !seriesVisibility[index];
+      window.seriesVisibility = seriesVisibility; // Update window reference
+      
+      // Update opacity immediately
+      legendItem.style.opacity = seriesVisibility[index] ? '1' : '0.4';
+      
+      // Redraw chart with updated visibility
+      const currentData = window.ChartRenderer.getCurrentChartData();
+      if (currentData) {
+        window.ChartRenderer.drawChart(
+          currentData.year,
+          currentData.pollutantId,
+          currentData.groupIds,
+          currentData.dataPoints
+        );
+      }
     });
 
     legendContainer.appendChild(legendItem);
@@ -351,7 +466,44 @@ function createCustomLegend(chart, data, groupIds, dataPoints) {
 }
 
 /**
- * Show a status message
+ * Add bubble size explanation text overlay at top of chart
+ */
+function addBubbleExplanationOverlay() {
+  const chartDiv = document.getElementById('chart_div');
+  if (!chartDiv) return;
+  
+  // Remove existing overlay if present
+  const existingOverlay = chartDiv.querySelector('.bubble-explanation-overlay');
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+  
+  // Create overlay div with scale information
+  const overlay = document.createElement('div');
+  overlay.className = 'bubble-explanation-overlay';
+  overlay.style.position = 'absolute';
+  overlay.style.top = '15px';
+  overlay.style.left = '50%';
+  overlay.style.transform = 'translateX(-50%)';
+  overlay.style.textAlign = 'center';
+  overlay.style.fontSize = '13px';
+  overlay.style.color = '#666';
+  overlay.style.lineHeight = '1.4';
+  overlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+  
+  // Update text based on scaling type
+  if (useLogScale) {
+    overlay.innerHTML = 'Bubble size proportional to log₁₀(Emission Factor) - logarithmic scale used due to wide EF range<br>Hover over bubble to see values';
+  } else {
+    overlay.innerHTML = 'Bubble size proportional to Emission Factor (area-scaled, radius = √EF)<br>Hover over bubble to see values';
+  }
+  
+  // Insert as first child so it's behind everything else in the chart
+  chartDiv.insertBefore(overlay, chartDiv.firstChild);
+}
+
+/**
+ * Display a status message to the user
  * @param {string} message - Message to display
  * @param {string} type - Message type: 'error', 'warning', 'info'
  */
