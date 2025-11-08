@@ -517,6 +517,10 @@ function refreshButtons() {
 
   // Process all rows to add remove buttons and checkboxes
   rows.forEach(row => {
+    // Store current checkbox state before removing (to preserve state when rebuilding)
+    const existingCheckbox = row.querySelector('.comparison-checkbox');
+    const wasChecked = existingCheckbox ? existingCheckbox.checked : false;
+    
     // Remove all existing checkboxes and buttons to rebuild them cleanly
     const existingCheckboxes = row.querySelectorAll('.group-checkbox');
     existingCheckboxes.forEach(checkbox => checkbox.remove());
@@ -550,11 +554,15 @@ function refreshButtons() {
     // Determine checked state
     const rowIndex = Array.from(rows).indexOf(row);
     
-    // Use comparison flag from URL if available (on initial load)
-    // Otherwise, always default to unchecked
-    if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
+    // Priority: 1) Preserve existing state, 2) Use URL flags on initial load, 3) Default to unchecked
+    if (existingCheckbox) {
+      // Preserve the current state for existing rows
+      comparisonCheckbox.checked = wasChecked;
+    } else if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
+      // Use comparison flag from URL (on initial load only)
       comparisonCheckbox.checked = initialComparisonFlags[rowIndex];
     } else {
+      // Default to unchecked for new groups
       comparisonCheckbox.checked = false;
     }
     
@@ -703,9 +711,19 @@ function setupEventListeners() {
     window.ExportShare.showShareDialog();
   });
 
-  // Download button
+  // Download PNG button
   document.getElementById('downloadBtn').addEventListener('click', () => {
     window.ExportShare.downloadChartPNG();
+  });
+
+  // Download CSV button
+  document.getElementById('downloadCSVBtn').addEventListener('click', () => {
+    window.ExportShare.exportData('csv');
+  });
+
+  // Download Excel button
+  document.getElementById('downloadXLSXBtn').addEventListener('click', () => {
+    window.ExportShare.exportData('xlsx');
   });
 
   // Resize handler

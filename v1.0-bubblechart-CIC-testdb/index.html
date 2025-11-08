@@ -103,6 +103,7 @@
   <!-- External libraries -->
   <script src="https://www.gstatic.com/charts/loader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 
 <body>
@@ -179,8 +180,10 @@
             <option value="">Select year</option>
           </select>
         </span>
-        <button id="shareBtn" disabled>🔗 Share</button>
-        <button id="downloadBtn" disabled>📥 Download PNG</button>
+        <button id="downloadBtn" disabled>⬇️ Download Chart Image – PNG</button>
+        <button id="downloadCSVBtn" disabled>📄 Download Data – CSV</button>
+        <button id="downloadXLSXBtn" disabled>📊 Download Data – Excel</button>
+        <button id="shareBtn" disabled>🔗 Share Chart</button>
       </div>
 
       <!-- Chart area -->

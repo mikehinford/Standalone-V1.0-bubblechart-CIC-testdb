@@ -285,8 +285,13 @@ function drawBubbleChart(year, pollutantId, groupIds) {
   // Enable share and download buttons
   const shareBtnEl = document.getElementById('shareBtn');
   const downloadBtnEl = document.getElementById('downloadBtn');
+  const downloadCSVBtnEl = document.getElementById('downloadCSVBtn');
+  const downloadXLSXBtnEl = document.getElementById('downloadXLSXBtn');
+  
   if (shareBtnEl) shareBtnEl.disabled = false;
   if (downloadBtnEl) downloadBtnEl.disabled = false;
+  if (downloadCSVBtnEl) downloadCSVBtnEl.disabled = false;
+  if (downloadXLSXBtnEl) downloadXLSXBtnEl.disabled = false;
 
   clearMessage();
 }

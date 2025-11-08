@@ -142,15 +142,42 @@ function showShareDialog() {
     return;
   }
 
-  // Build shareable URL with parameters (preserve literal commas)
-  const query = `year=${chartData.year}&pollutant_id=${chartData.pollutantId}&group_ids=${chartData.groupIds.join(',')}`;
+  // Build shareable URL with parameters matching updateURL() format
+  // Get group IDs with comparison flags ('c' suffix if checkbox is checked)
+  const allGroups = window.supabaseModule.allGroups || [];
+  const groupRows = document.querySelectorAll('.groupRow');
+  
+  const groupIdsWithFlags = chartData.groupIds.map((groupId, index) => {
+    // Check if the corresponding checkbox is checked
+    const row = groupRows[index];
+    const checkbox = row?.querySelector('.comparison-checkbox');
+    const isChecked = checkbox?.checked || false;
+    
+    // Add 'c' suffix if checkbox is checked
+    return isChecked ? `${groupId}c` : `${groupId}`;
+  });
+
+  // Format: pollutant_id, group_ids, year (year at the end)
+  const query = `pollutant_id=${chartData.pollutantId}&group_ids=${groupIdsWithFlags.join(',')}&year=${chartData.year}`;
   const shareUrl = window.location.origin + window.location.pathname + '?' + query;
   
   const title = `${chartData.pollutantName} vs Activity Data (${chartData.year})`;
 
   // Create dialog
   const dialog = document.createElement('div');
-  dialog.className = 'modal-overlay';
+  dialog.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+  
   dialog.onclick = (e) => {
     if (e.target === dialog) {
       document.body.removeChild(dialog);
@@ -158,8 +185,21 @@ function showShareDialog() {
   };
 
   const content = document.createElement('div');
-  content.className = 'modal-content';
+  content.style.cssText = `
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    position: relative;
+  `;
+  
   content.innerHTML = `
+    <button id="closeShareBtn" style="position: absolute; top: 16px; right: 16px; padding: 8px 16px; background: #666; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+      ❌ Close
+    </button>
+    
     <h3 style="margin: 0 0 16px 0; color: #333;">🔗 Share Chart</h3>
     <p style="margin: 0 0 16px 0; color: #666;">Share this specific chart configuration:</p>
     <p style="margin: 0 0 16px 0; font-weight: 600; color: #000;">${title}</p>
@@ -167,7 +207,7 @@ function showShareDialog() {
     <div style="margin: 16px 0;">
       <label style="display: block; margin-bottom: 8px; font-weight: 600;">Shareable URL:</label>
       <div style="display: flex; gap: 8px;">
-        <input type="text" id="shareUrlInput" value="${shareUrl}" readonly 
+        <input type="text" id="shareUrlInput" name="shareUrlInput" value="${shareUrl}" readonly 
           style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; background: #f9f9f9;">
         <button id="copyUrlBtn" style="padding: 8px 16px; background: #9C27B0; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; min-width: 130px;">
           📋 Copy URL
@@ -181,10 +221,13 @@ function showShareDialog() {
       </button>
     </div>
     
-    <div style="margin: 16px 0; text-align: right;">
-      <button id="closeBtn" style="padding: 8px 16px; background: #666; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-        Close
-      </button>
+    <div style="margin: 16px 0;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button id="emailShareBtn" style="padding: 12px 20px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">
+          📧 Send Email
+        </button>
+        <p style="margin: 0; color: #000; font-weight: 600;">Chart will be copied to clipboard<br>for pasting into email</p>
+      </div>
     </div>
   `;
   
@@ -213,7 +256,11 @@ function showShareDialog() {
         btn.style.background = '#9C27B0';
       }, 2000);
     } catch (err) {
-      alert('Failed to copy URL to clipboard');
+      // Fallback for older browsers
+      const input = content.querySelector('#shareUrlInput');
+      input.select();
+      document.execCommand('copy');
+      alert('URL copied to clipboard!');
     }
   });
 
@@ -265,15 +312,150 @@ function showShareDialog() {
     }
   });
 
+  // Email share functionality
+  content.querySelector('#emailShareBtn').addEventListener('click', async () => {
+    const btn = content.querySelector('#emailShareBtn');
+    const originalText = btn.textContent;
+    const originalBg = btn.style.background;
+    
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Copying image...';
+      
+      const chartImageData = await generateChartImage();
+      const blob = dataURLtoBlob(chartImageData);
+      
+      if (navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+        const clipboardItem = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([clipboardItem]);
+        
+        btn.textContent = '✅ Copied!';
+        btn.style.background = '#4CAF50';
+        
+        if (window.Analytics && supabase) {
+          window.Analytics.trackAnalytics(supabase, 'email_share_copied', {
+            year: chartData.year,
+            pollutant: chartData.pollutantName,
+            group_count: chartData.groupIds.length
+          });
+        }
+        
+        // Open email client
+        const subject = encodeURIComponent(title);
+        const body = encodeURIComponent(`View the chart here: ${shareUrl}\n\nThe chart image has been copied to your clipboard. Paste it into your email.`);
+        window.location.href = `mailto:?subject=${subject}&body=${body}`;
+        
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = originalBg;
+          btn.disabled = false;
+        }, 2000);
+      } else {
+        btn.textContent = originalText;
+        btn.style.background = originalBg;
+        btn.disabled = false;
+        alert('Your browser doesn\'t support copying images to clipboard.');
+      }
+    } catch (error) {
+      console.error('Failed to copy image for email:', error);
+      btn.textContent = originalText;
+      btn.style.background = originalBg;
+      btn.disabled = false;
+      alert('Failed to copy chart image: ' + error.message);
+    }
+  });
+
   // Close button
-  content.querySelector('#closeBtn').addEventListener('click', () => {
+  content.querySelector('#closeShareBtn').addEventListener('click', () => {
     document.body.removeChild(dialog);
   });
+}
+
+/**
+ * Export scatter chart data to CSV or Excel
+ * @param {string} format - 'csv' or 'xlsx'
+ */
+function exportData(format = 'csv') {
+  const chartData = window.ChartRenderer.getCurrentChartData();
+  
+  if (!chartData || !chartData.dataPoints || chartData.dataPoints.length === 0) {
+    alert('No chart data available to export. Please select a pollutant, groups, and year first.');
+    return;
+  }
+
+  const pollutantName = chartData.pollutantName;
+  const pollutantUnit = window.supabaseModule.getPollutantUnit(chartData.pollutantId);
+  const activityUnit = window.supabaseModule.getPollutantUnit(window.supabaseModule.activityDataId);
+  const year = chartData.year;
+  const dataPoints = chartData.dataPoints;
+
+  // Track export analytics
+  if (window.Analytics && supabase) {
+    window.Analytics.trackAnalytics(supabase, 'data_export', {
+      format: format,
+      pollutant: pollutantName,
+      year: year,
+      group_count: dataPoints.length
+    });
+  }
+
+  // Build rows
+  const rows = [];
+  const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+  // Header rows
+  rows.push([`Pollutant: ${pollutantName}`, `Emission Unit: ${pollutantUnit}`, `Year: ${year}`]);
+  rows.push([]); // spacer row
+  
+  // Column headers - use hyphens instead of brackets to match chart formatting
+  rows.push(['Group', `Activity Data - ${activityUnit}`, `Emissions - ${pollutantUnit}`, 'Emission Factor - g/GJ']);
+
+  // Data rows
+  dataPoints.forEach(point => {
+    const emissionFactor = point.EF !== undefined ? point.EF : 
+      (point.activityData !== 0 ? (point.pollutantValue / point.activityData) * 1000000 : 0);
+    
+    rows.push([
+      point.groupName,
+      point.activityData.toFixed(2),
+      point.pollutantValue.toFixed(6),
+      emissionFactor.toFixed(2)
+    ]);
+  });
+
+  rows.push([]); // spacer
+  rows.push([`Downloaded on: ${timestamp}`]);
+
+  // Generate and download file
+  const safePollutant = pollutantName.replace(/[^a-z0-9_\-]/gi, '_');
+  const filename = `${safePollutant}_vs_Activity_${year}`;
+
+  if (format === 'csv') {
+    const csvContent = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.csv`;
+    link.click();
+  } else if (format === 'xlsx') {
+    // Check if XLSX library is loaded
+    if (typeof XLSX === 'undefined') {
+      alert('Excel export library not loaded. Please use CSV format instead.');
+      return;
+    }
+    
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Data');
+    XLSX.writeFile(wb, `${filename}.xlsx`);
+  }
 }
 
 // Export functions
 window.ExportShare = {
   downloadChartPNG,
   showShareDialog,
-  generateChartImage
+  generateChartImage,
+  exportData
 };
+
