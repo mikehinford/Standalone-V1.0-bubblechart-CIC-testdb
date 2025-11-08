@@ -564,6 +564,7 @@ function refreshButtons() {
 
 // Ensure checkboxes are only checked for two groups at once
 function refreshCheckboxes() {
+  console.log('📋 refreshCheckboxes called');
   const checkboxes = document.querySelectorAll('.comparison-checkbox');
   const checkedBoxes = Array.from(checkboxes).filter(checkbox => checkbox.checked);
 
@@ -574,6 +575,10 @@ function refreshCheckboxes() {
       }
     });
   }
+  
+  // Update the comparison statement based on checked boxes count
+  console.log(`📊 Checked boxes count: ${checkedBoxes.length}`);
+  drawChart();
 }
 
 // Update checkbox behavior when adding a new group
@@ -715,9 +720,14 @@ function drawChart() {
   // Draw chart
   window.ChartRenderer.drawBubbleChart(selectedYear, selectedPollutantId, selectedGroupIds);
 
-  // Update the comparison statement now that data is ready
-  const dataPoints = window.supabaseModule.getScatterData(selectedYear, selectedPollutantId, selectedGroupIds);
-  if (dataPoints.length >= 2) {
+  // Update the comparison statement based on checked comparison checkboxes
+  const checkedCheckboxes = document.querySelectorAll('.comparison-checkbox:checked');
+  const checkedCount = checkedCheckboxes.length;
+  
+  console.log(`🔍 Checked comparison checkboxes: ${checkedCount}`);
+  
+  if (checkedCount >= 2) {
+    const dataPoints = window.supabaseModule.getScatterData(selectedYear, selectedPollutantId, selectedGroupIds);
     const group1 = dataPoints[0];
     const group2 = dataPoints[1];
 
@@ -743,7 +753,8 @@ function drawChart() {
     };
     updateComparisonStatement(statement);
   } else {
-    updateComparisonStatement("Select two groups to see a comparison.");
+    // Hide comparison statement when less than 2 checkboxes checked
+    hideComparisonStatement();
   }
   
   // Update URL
@@ -797,6 +808,7 @@ function updateComparisonStatement(statement) {
   console.log('🔥 updateComparisonStatement called with:', statement);
   const comparisonDiv = ensureComparisonDivExists();
   if (comparisonDiv) {
+    comparisonDiv.style.display = 'block'; // Make sure it's visible
     if (typeof statement === 'object' && statement.line1 && statement.line2) {
       // Responsive design using JavaScript-calculated sizes based on window width
       const windowWidth = window.innerWidth;
@@ -867,6 +879,20 @@ function updateComparisonStatement(statement) {
       `;
     }
     comparisonDiv.className = 'comparison-statement';
+  }
+}
+
+/**
+ * Hide the comparison statement
+ */
+function hideComparisonStatement() {
+  console.log('🚫 hideComparisonStatement called');
+  const comparisonDiv = document.getElementById('comparisonDiv');
+  if (comparisonDiv) {
+    console.log('✅ Found comparisonDiv, hiding it');
+    comparisonDiv.style.display = 'none';
+  } else {
+    console.log('❌ comparisonDiv not found');
   }
 }
 

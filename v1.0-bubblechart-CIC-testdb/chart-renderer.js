@@ -54,33 +54,60 @@ function drawBubbleChart(year, pollutantId, groupIds) {
 
   // Add data rows with emission factor calculation and sizing
   console.log('Adding', dataPoints.length, 'rows to bubble-style scatter chart data');
+  
+  // Calculate all EF values first to determine dynamic scale factor
+  const allEFs = dataPoints.map(p => p.EF !== undefined ? p.EF : (p.activityData !== 0 ? (p.pollutantValue / p.activityData) * 1000000 : 0));
+  const maxEF = Math.max(...allEFs);
+  const minEF = Math.min(...allEFs.filter(ef => ef > 0)); // Exclude zeros
+  
+  // Smart dynamic scaling:
+  // 1. Try to scale so max bubble is 90px
+  // 2. If that would make min bubble < 5px, scale so min bubble is 5px instead
+  const targetMaxRadius = 90;
+  const targetMinRadius = 5;
+  
+  let scaleFactor = targetMaxRadius / Math.sqrt(maxEF);
+  const minRadiusWithMaxScale = scaleFactor * Math.sqrt(minEF);
+  
+  if (minRadiusWithMaxScale < targetMinRadius) {
+    // Min would be too small, so scale based on min instead
+    scaleFactor = targetMinRadius / Math.sqrt(minEF);
+    console.log(`Dynamic scaling: Using MIN-based scaling (min would be ${minRadiusWithMaxScale.toFixed(2)}px)`);
+  } else {
+    console.log(`Dynamic scaling: Using MAX-based scaling (min will be ${minRadiusWithMaxScale.toFixed(2)}px)`);
+  }
+  
+  console.log(`maxEF=${maxEF.toFixed(2)}, minEF=${minEF.toFixed(2)}, scaleFactor=${scaleFactor.toFixed(2)}`);
+  
   dataPoints.forEach((point, index) => {
     const color = window.Colors.getColorForGroup(point.groupName);
     const pollutantUnit = window.supabaseModule.getPollutantUnit(pollutantId);
+
+    // Use Emission Factor (EF) directly for bubble size
+    // If EF is already provided in point, use it; otherwise, calculate as before
+    const emissionFactor = point.EF !== undefined ? point.EF : (point.activityData !== 0 ? (point.pollutantValue / point.activityData) * 1000000 : 0);
+
+    // Calculate bubble size based on EF with square root scaling
+    // This compresses the range so both large and small EF values are visible
+    // while still maintaining proportional representation
+    const sqrtEF = Math.sqrt(emissionFactor);
+    const radius = scaleFactor * sqrtEF;
     
-    // Calculate emission factor: (Emissions / Activity Data) * 1,000,000
-    const emissionFactor = point.activityData !== 0 ? 
-      (point.pollutantValue / point.activityData) * 1000000 : 0;
-    
-    // Calculate bubble size based on emission factor (scale it to reasonable point size)
-    const minSize = 15;
-    const maxSize = 50;
-    const emissionFactors = dataPoints.map(p => 
-      p.activityData !== 0 ? (p.pollutantValue / p.activityData) * 1000000 : 0
-    );
-    const minFactor = Math.min(...emissionFactors);
-    const maxFactor = Math.max(...emissionFactors);
-    const normalizedSize = maxFactor > minFactor ? 
-      minSize + ((emissionFactor - minFactor) / (maxFactor - minFactor)) * (maxSize - minSize) :
-      (minSize + maxSize) / 2;
-    
+    // Use calculated radius directly - no minimum or maximum constraints
+    const normalizedRadius = radius;
+
+    // Debug logging for first few points
+    if (index < 3) {
+      console.log(`Point ${index}: ${point.groupName}, EF=${emissionFactor.toFixed(2)}, sqrtEF=${sqrtEF.toFixed(2)}, radius=${radius.toFixed(2)}, normalized=${normalizedRadius.toFixed(2)}`);
+    }
+
     const tooltip = `${point.groupName}\nActivity: ${point.activityData.toLocaleString()} TJ\nEmissions: ${point.pollutantValue.toLocaleString()} ${pollutantUnit}\nEmission Factor: ${emissionFactor.toFixed(2)}`;
-    
+
     data.addRow([
       point.activityData, // X-axis
-      point.pollutantValue, // Y-axis  
+      point.pollutantValue, // Y-axis
       tooltip,
-      `point {fill-color: ${color}; size: ${Math.round(normalizedSize)};}`
+      `point {fill-color: ${color}; size: ${Math.round(normalizedRadius)};}`
     ]);
   });
   
