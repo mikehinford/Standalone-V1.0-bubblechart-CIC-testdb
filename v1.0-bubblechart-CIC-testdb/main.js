@@ -23,6 +23,7 @@ let selectedYear = null;
 let selectedPollutantId = null;
 let chartRenderCallback = null; // Callback for when chart finishes rendering
 let selectedGroupIds = [];
+let initialComparisonFlags = []; // Store comparison flags from URL for initial checkbox state
 const MAX_GROUPS = 10;
 
 /**
@@ -227,8 +228,12 @@ async function renderInitialView() {
       groupContainer.innerHTML = '';
 
       if (params.groupNames && params.groupNames.length > 0) {
+        // Store comparison flags from URL for use in refreshButtons
+        initialComparisonFlags = params.comparisonFlags || [];
         params.groupNames.forEach(name => addGroupSelector(name, false));
       } else {
+        // Clear comparison flags for default groups (will be set to checked by default)
+        initialComparisonFlags = [];
         // Add default groups if none are in the URL
         const allGroups = window.allGroupsList || [];
         console.log('Adding default groups from', allGroups.length, 'available groups');
@@ -296,7 +301,7 @@ async function renderInitialView() {
 function parseUrlParameters() {
   const params = new URLSearchParams(window.location.search);
   const pollutantId = params.get('pollutant_id');
-  const groupIds = params.get('group_ids')?.split(',').map(Number).filter(Boolean);
+  const groupIdsParam = params.get('group_ids')?.split(',') || [];
   const year = params.get('year');
 
   const pollutants = window.supabaseModule.allPollutants || [];
@@ -310,17 +315,29 @@ function parseUrlParameters() {
     }
   }
 
+  // Parse group IDs and comparison flags (e.g., "20c" means group 20 with comparison checked)
   let groupNames = [];
-  if (groupIds && groupIds.length > 0) {
-    groupNames = groupIds.map(id => {
-      const group = groups.find(g => String(g.id) === String(id));
-      return group ? group.group_title : null;
-    }).filter(Boolean);
+  let comparisonFlags = []; // Track which groups should have comparison checkbox checked
+  
+  if (groupIdsParam && groupIdsParam.length > 0) {
+    groupIdsParam.forEach(idStr => {
+      const hasComparisonFlag = idStr.endsWith('c');
+      const id = parseInt(hasComparisonFlag ? idStr.slice(0, -1) : idStr);
+      
+      if (id) {
+        const group = groups.find(g => g.id === id);
+        if (group) {
+          groupNames.push(group.group_title);
+          comparisonFlags.push(hasComparisonFlag);
+        }
+      }
+    });
   }
 
   return {
     pollutantName,
     groupNames,
+    comparisonFlags,
     year
   };
 }
@@ -529,7 +546,18 @@ function refreshButtons() {
     const comparisonCheckbox = document.createElement('input');
     comparisonCheckbox.type = 'checkbox';
     comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
-    comparisonCheckbox.checked = true; // Default to checked
+    
+    // Determine checked state
+    const rowIndex = Array.from(rows).indexOf(row);
+    
+    // Use comparison flag from URL if available (on initial load)
+    // Otherwise, always default to unchecked
+    if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
+      comparisonCheckbox.checked = initialComparisonFlags[rowIndex];
+    } else {
+      comparisonCheckbox.checked = false;
+    }
+    
     comparisonCheckbox.style.width = '18px';
     comparisonCheckbox.style.height = '18px';
     comparisonCheckbox.style.marginLeft = '50px'; // Increased from 10px to move right and center under heading
@@ -538,8 +566,16 @@ function refreshButtons() {
     row.appendChild(comparisonCheckbox);
   });
   
+  // Clear initialComparisonFlags after first use
+  if (initialComparisonFlags.length > 0) {
+    initialComparisonFlags = [];
+  }
+  
   // Align the comparison header with the checkboxes
   alignComparisonHeader();
+  
+  // Apply checkbox limit logic (disable unchecked boxes if 2 are already checked)
+  refreshCheckboxes();
 
   // Add "Add Group" button just below the last group box
   let addBtn = container.querySelector('.add-btn');
@@ -568,7 +604,9 @@ function refreshCheckboxes() {
   const checkboxes = document.querySelectorAll('.comparison-checkbox');
   const checkedBoxes = Array.from(checkboxes).filter(checkbox => checkbox.checked);
 
+  // Limit to max 2 checked boxes
   if (checkedBoxes.length > 2) {
+    // Uncheck boxes beyond the first 2
     checkedBoxes.forEach((checkbox, index) => {
       if (index >= 2) {
         checkbox.checked = false;
@@ -576,8 +614,24 @@ function refreshCheckboxes() {
     });
   }
   
+  // Recalculate after limiting
+  const finalCheckedBoxes = Array.from(checkboxes).filter(checkbox => checkbox.checked);
+  
+  // Disable unchecked boxes if already at limit (2 checked)
+  checkboxes.forEach(checkbox => {
+    if (!checkbox.checked && finalCheckedBoxes.length >= 2) {
+      checkbox.disabled = true;
+      checkbox.style.opacity = '0.5';
+      checkbox.style.cursor = 'not-allowed';
+    } else {
+      checkbox.disabled = false;
+      checkbox.style.opacity = '1';
+      checkbox.style.cursor = 'pointer';
+    }
+  });
+  
   // Update the comparison statement based on checked boxes count
-  console.log(`📊 Checked boxes count: ${checkedBoxes.length}`);
+  console.log(`📊 Checked boxes count: ${finalCheckedBoxes.length}`);
   drawChart();
 }
 
@@ -936,12 +990,22 @@ function updateURL() {
 
   // Convert group names to IDs for URL
   const allGroups = window.supabaseModule.allGroups || [];
-  const selectedGroupIds = selectedGroupNames.map(name => {
+  const groupRows = document.querySelectorAll('.groupRow');
+  
+  const groupIdsWithFlags = selectedGroupNames.map((name, index) => {
     const group = allGroups.find(g => g.group_title === name);
-    return group ? group.id : null;
+    if (!group) return null;
+    
+    // Check if the corresponding checkbox is checked
+    const row = groupRows[index];
+    const checkbox = row?.querySelector('.comparison-checkbox');
+    const isChecked = checkbox?.checked || false;
+    
+    // Add 'c' suffix if checkbox is checked
+    return isChecked ? `${group.id}c` : `${group.id}`;
   }).filter(id => id !== null);
 
-  const query = `pollutant_id=${selectedPollutantId}&group_ids=${selectedGroupIds.join(',')}&year=${selectedYear}`;
+  const query = `pollutant_id=${selectedPollutantId}&group_ids=${groupIdsWithFlags.join(',')}&year=${selectedYear}`;
   const newURL = window.location.pathname + '?' + query;
   window.history.replaceState({}, '', newURL);
 }

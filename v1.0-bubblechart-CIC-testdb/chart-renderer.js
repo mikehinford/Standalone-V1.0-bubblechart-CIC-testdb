@@ -124,8 +124,8 @@ function drawBubbleChart(year, pollutantId, groupIds) {
   
   // Format title and axis labels for bubble chart
   const chartTitle = `${pollutantName} - ${pollutantUnit}`;
-  const yAxisTitle = `${pollutantName} (${pollutantUnit})`;
-  const xAxisTitle = activityUnit ? `Activity Data (${activityUnit})` : 'Activity Data (TJ)';
+  const yAxisTitle = `${pollutantName} - ${pollutantUnit}`;
+  const xAxisTitle = activityUnit ? `Activity Data - ${activityUnit}` : 'Activity Data - TJ';
 
   // Create a custom title element with two lines
   const chartTitleElement = document.getElementById('chartTitle');
