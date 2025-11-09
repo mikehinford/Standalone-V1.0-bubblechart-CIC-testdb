@@ -82,8 +82,16 @@ async function generateChartImage() {
 
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      img.onload = async () => {
         try {
+          if (document.fonts && typeof document.fonts.load === 'function') {
+            try {
+              await document.fonts.load('400 60px "Tiresias Infofont"');
+            } catch (fontErr) {
+              console.warn('Tiresias font failed to load before export; falling back to system font.', fontErr);
+            }
+          }
+
           const pollutantName = chartData.pollutantName;
           const pollutantUnit = chartData.pollutantUnit;
           const year = chartData.year;
@@ -341,17 +349,35 @@ async function generateChartImage() {
             const efDisplay = emissionFactor < 0.01 ? emissionFactor.toFixed(8) : emissionFactor.toFixed(2);
             const labelText = `${efDisplay} g/GJ`;
             
-            // Always place label to the right of the bubble, always black, no leader line
-            ctx.font = 'bold 56px system-ui, sans-serif'; // Double the previous 28px
-            ctx.fillStyle = '#000000';
+            // Always place label to the right of the bubble
+            const bubbleColor = window.Colors && typeof window.Colors.getColorForGroup === 'function'
+              ? window.Colors.getColorForGroup(point.groupName)
+              : '#000000';
+
+            ctx.font = '400 60px "Tiresias Infofont", sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
+            ctx.lineJoin = 'round';
+            ctx.miterLimit = 2;
             
             // Position label to the right of bubble with 20px padding
             const labelX = bubbleX + bubbleRadius + 20;
             const labelY = bubbleY;
-            
+
+            const innerStrokeWidth = 1.5 * exportScale;
+            const haloThickness = 6 * exportScale;
+            const haloLineWidth = innerStrokeWidth + (2 * haloThickness);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+            ctx.lineWidth = haloLineWidth;
+            ctx.strokeText(labelText, labelX, labelY);
+
+            ctx.fillStyle = bubbleColor;
             ctx.fillText(labelText, labelX, labelY);
+
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = innerStrokeWidth;
+            ctx.strokeText(labelText, labelX, labelY);
           });
 
           // Draw Logo and Footer

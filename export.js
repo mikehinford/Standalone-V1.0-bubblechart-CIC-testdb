@@ -82,8 +82,16 @@ async function generateChartImage() {
 
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      img.onload = async () => {
         try {
+          if (document.fonts && typeof document.fonts.load === 'function') {
+            try {
+              await document.fonts.load('400 60px "Tiresias Infofont"');
+            } catch (fontErr) {
+              console.warn('Tiresias font failed to load before export; falling back to system font.', fontErr);
+            }
+          }
+
           const pollutantName = chartData.pollutantName;
           const pollutantUnit = chartData.pollutantUnit;
           const year = chartData.year;
@@ -342,16 +350,47 @@ async function generateChartImage() {
             const labelText = `${efDisplay} g/GJ`;
             
             // Always place label to the right of the bubble, always black, no leader line
-            ctx.font = 'bold 56px system-ui, sans-serif'; // Double the previous 28px
-            ctx.fillStyle = '#000000';
+            const bubbleColor = window.Colors && typeof window.Colors.getColorForGroup === 'function'
+              ? window.Colors.getColorForGroup(point.groupName)
+              : '#000000';
+
+            ctx.font = '400 60px "Tiresias Infofont", sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             
             // Position label to the right of bubble with 20px padding
             const labelX = bubbleX + bubbleRadius + 20;
             const labelY = bubbleY;
-            
+
+            const desiredInnerStroke = 1.5; // logical px thickness for inner (black) outline in final image
+            const desiredOuterStroke = 6; // logical px thickness for outer (white) halo in final image
+            const innerStrokeWidth = desiredInnerStroke * exportScale;
+            const outerStrokeWidth = desiredOuterStroke * exportScale;
+
+            ctx.lineJoin = 'round';
+            ctx.miterLimit = 2;
+
+            ctx.lineWidth = outerStrokeWidth;
+            ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+            ctx.strokeText(labelText, labelX, labelY);
+
+            ctx.lineWidth = innerStrokeWidth;
+            ctx.strokeStyle = '#000000';
+            ctx.strokeText(labelText, labelX, labelY);
+
+            ctx.fillStyle = bubbleColor;
             ctx.fillText(labelText, labelX, labelY);
+
+            // Temporary debug label to show font name used above the value
+            const previousFont = ctx.font;
+            const previousFillStyle = ctx.fillStyle;
+            ctx.font = '24px system-ui, sans-serif';
+            ctx.fillStyle = '#333333';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('Tiresias 400', labelX, labelY - (70 * exportScale));
+            ctx.font = previousFont;
+            ctx.fillStyle = previousFillStyle;
+            ctx.textBaseline = 'middle';
           });
 
           // Draw Logo and Footer
@@ -452,6 +491,253 @@ async function generateChartImage() {
       reject(error);
     }
   });
+}
+
+/**
+ * Generate a comparison sheet of label styling options and download as PNG
+ * Includes multiple fonts, stroke weights, and shadow treatments using "56"
+ */
+async function generateFontStyleTestImage() {
+  await loadTestFonts();
+
+  const exportScale = 3;
+  const outerStroke = 6; // logical px
+  const padding = 80;
+  const headerHeight = 140;
+  const columnHeaderHeight = 60;
+  const rowHeight = 170;
+  const descWidth = 520;
+  const sampleSpacing = 420;
+  const sample1X = padding + descWidth;
+  const sample2X = sample1X + sampleSpacing;
+  const fontTests = [
+    {
+      label: 'Roboto regular (400) · inner stroke 1px · soft shadow (blur 6px, 35%)',
+      font: '400 60px "Roboto", sans-serif',
+      innerStroke: 1,
+      shadowBlur: 6,
+      shadowColor: 'rgba(0,0,0,0.35)'
+    },
+    {
+      label: 'Roboto semi-bold (600) · inner stroke 1.2px · soft shadow',
+      font: '600 60px "Roboto", sans-serif',
+      innerStroke: 1.2,
+      shadowBlur: 6,
+      shadowColor: 'rgba(0,0,0,0.3)'
+    },
+    {
+      label: 'Inter regular (400) · inner stroke 1px · soft shadow (blur 5px, 30%)',
+      font: '400 60px "Inter", sans-serif',
+      innerStroke: 1,
+      shadowBlur: 5,
+      shadowColor: 'rgba(0,0,0,0.3)'
+    },
+    {
+      label: 'Inter medium (500) · inner stroke 1.2px · no shadow',
+      font: '500 60px "Inter", sans-serif',
+      innerStroke: 1.2,
+      shadowBlur: 0,
+      shadowColor: 'transparent'
+    },
+    {
+      label: 'Source Sans Pro regular (400) · inner stroke 1px · deeper shadow (blur 7px, 40%)',
+      font: '400 60px "Source Sans Pro", sans-serif',
+      innerStroke: 1,
+      shadowBlur: 7,
+      shadowColor: 'rgba(0,0,0,0.4)'
+    },
+    {
+      label: 'IBM Plex Sans semi-bold (600) · inner stroke 1.2px · soft shadow (blur 6px, 35%)',
+      font: '600 60px "IBM Plex Sans", sans-serif',
+      innerStroke: 1.2,
+      shadowBlur: 6,
+      shadowColor: 'rgba(0,0,0,0.35)'
+    },
+    {
+      label: 'Tiresias Infofont regular (400) · inner stroke 2px · no shadow',
+      font: '400 60px "Tiresias Infofont", sans-serif',
+      innerStroke: 2,
+      shadowBlur: 0,
+      shadowColor: 'transparent'
+    }
+  ];
+
+  const contentHeight = fontTests.length * rowHeight;
+  const canvasWidth = padding * 2 + descWidth + sampleSpacing * 2;
+  const canvasHeight = padding + headerHeight + columnHeaderHeight + contentHeight + padding;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Header
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 58px system-ui, sans-serif';
+  ctx.fillText('Emission Factor Label Style Tests', canvasWidth / 2, padding - 10);
+
+  ctx.font = '24px system-ui, sans-serif';
+  ctx.fillText('Each variation includes the existing white halo (6px logical) and compares dark blue vs yellow fills', canvasWidth / 2, padding + 70);
+  ctx.fillText('Shadow blur values are shown in logical pixels; actual blur equals value × export scale (3)', canvasWidth / 2, padding + 104);
+
+  // Column headers
+  const columnHeaderY = padding + headerHeight - 10;
+  ctx.textAlign = 'left';
+  ctx.font = '28px system-ui, sans-serif';
+  ctx.fillText('Configuration', padding, columnHeaderY);
+  ctx.fillText('Dark Blue (#4363D8)', sample1X, columnHeaderY);
+  ctx.fillText('Yellow (#FFE119)', sample2X, columnHeaderY);
+
+  const colors = [
+    { name: 'Dark Blue', hex: '#4363D8' },
+    { name: 'Yellow', hex: '#FFE119' }
+  ];
+
+  const tableStartY = columnHeaderY + columnHeaderHeight;
+
+  fontTests.forEach((config, index) => {
+    const rowY = tableStartY + index * rowHeight;
+
+    // Divider line
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding, rowY);
+    ctx.lineTo(canvasWidth - padding, rowY);
+    ctx.stroke();
+
+    // Configuration label
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillStyle = '#000000';
+    ctx.fillText(config.label, padding, rowY + 20);
+
+    const sampleY = rowY + rowHeight / 2 + 10;
+
+    colors.forEach((color, colorIndex) => {
+      const sampleX = colorIndex === 0 ? sample1X : sample2X;
+      drawFontSample(ctx, '56', sampleX, sampleY, {
+        font: config.font,
+        innerStroke: config.innerStroke,
+        outerStroke,
+        shadowBlur: config.shadowBlur,
+        shadowColor: config.shadowColor,
+        fillColor: color.hex,
+        exportScale
+      });
+    });
+  });
+
+  // Bottom divider
+  const bottomLineY = tableStartY + fontTests.length * rowHeight;
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, bottomLineY);
+  ctx.lineTo(canvasWidth - padding, bottomLineY);
+  ctx.stroke();
+
+  // Footer note
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = '24px system-ui, sans-serif';
+  ctx.fillStyle = '#333333';
+  ctx.fillText('Tip: Some fonts may fall back if unavailable on your system.', padding, bottomLineY + 18);
+
+  const dataURL = canvas.toDataURL('image/png');
+
+  try {
+    const link = document.createElement('a');
+    link.download = 'font-style-test.png';
+    link.href = dataURL;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (err) {
+    console.warn('Automatic download failed, returning data URL instead.', err);
+  }
+
+  return dataURL;
+}
+
+function drawFontSample(ctx, text, x, y, options) {
+  const {
+    font,
+    innerStroke,
+    outerStroke,
+    shadowBlur,
+    shadowColor,
+    fillColor,
+    exportScale
+  } = options;
+
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+
+  // Outer halo
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = outerStroke * exportScale;
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.strokeText(text, x, y);
+
+  // Inner stroke
+  ctx.lineWidth = innerStroke * exportScale;
+  ctx.strokeStyle = '#000000';
+  ctx.strokeText(text, x, y);
+
+  // Fill with optional shadow
+  if (shadowBlur && shadowBlur > 0) {
+    ctx.shadowColor = shadowColor || 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = shadowBlur * exportScale;
+  } else {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.fillStyle = fillColor;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+async function loadTestFonts() {
+  if (!document.fonts || typeof document.fonts.load !== 'function') {
+    return;
+  }
+
+  const fontLoads = [
+    '400 60px "Roboto"',
+    '600 60px "Roboto"',
+    '400 60px "Inter"',
+    '500 60px "Inter"',
+    '400 60px "Source Sans Pro"',
+    '600 60px "IBM Plex Sans"',
+    '400 60px "Tiresias Infofont"'
+  ].map(descriptor => {
+    try {
+      return document.fonts.load(descriptor);
+    } catch (err) {
+      console.warn('Failed to initiate font load for descriptor:', descriptor, err);
+      return Promise.resolve();
+    }
+  });
+
+  try {
+    await Promise.all(fontLoads);
+  } catch (err) {
+    console.warn('Font load promise rejected:', err);
+  }
 }
 
 /**
@@ -826,6 +1112,7 @@ window.ExportShare = {
   downloadChartPNG,
   showShareDialog,
   generateChartImage,
-  exportData
+  exportData,
+  generateFontStyleTestImage
 };
 
