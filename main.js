@@ -529,7 +529,7 @@ function addGroupSelector(defaultValue = "", usePlaceholder = true){
   setTimeout(() => {
     refreshGroupDropdowns();
     refreshButtons();
-    alignComparisonHeader();
+    // alignComparisonHeader();
   }, 10);
 }
 
@@ -600,34 +600,34 @@ function refreshButtons() {
       row.appendChild(removeBtn);
     }
     
-    // Add comparison checkbox only if there are 2 or more groups (like remove button)
-    if (rows.length >= 2) {
-      const comparisonCheckbox = document.createElement('input');
-      comparisonCheckbox.type = 'checkbox';
-      comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
-      
-      // Determine checked state
-      const rowIndex = Array.from(rows).indexOf(row);
-      
-      // Priority: 1) Preserve existing state, 2) Use URL flags on initial load, 3) Default to unchecked
-      if (existingCheckbox) {
-        // Preserve the current state for existing rows
-        comparisonCheckbox.checked = wasChecked;
-      } else if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
-        // Use comparison flag from URL (on initial load only)
-        comparisonCheckbox.checked = initialComparisonFlags[rowIndex];
-      } else {
-        // Default to unchecked for new groups
-        comparisonCheckbox.checked = false;
-      }
-      
-      comparisonCheckbox.style.width = '18px';
-      comparisonCheckbox.style.height = '18px';
-      comparisonCheckbox.style.marginLeft = '50px'; // Increased from 10px to move right and center under heading
-      comparisonCheckbox.title = 'Include in comparison statement';
-      comparisonCheckbox.addEventListener('change', refreshCheckboxes);
-      row.appendChild(comparisonCheckbox);
-    }
+    // Comparison statement checkboxes disabled per requirements
+    // if (rows.length >= 2) {
+    //   const comparisonCheckbox = document.createElement('input');
+    //   comparisonCheckbox.type = 'checkbox';
+    //   comparisonCheckbox.className = 'group-checkbox comparison-checkbox';
+    //   
+    //   // Determine checked state
+    //   const rowIndex = Array.from(rows).indexOf(row);
+    //   
+    //   // Priority: 1) Preserve existing state, 2) Use URL flags on initial load, 3) Default to unchecked
+    //   if (existingCheckbox) {
+    //     // Preserve the current state for existing rows
+    //     comparisonCheckbox.checked = wasChecked;
+    //   } else if (initialComparisonFlags.length > 0 && rowIndex < initialComparisonFlags.length) {
+    //     // Use comparison flag from URL (on initial load only)
+    //     comparisonCheckbox.checked = initialComparisonFlags[rowIndex];
+    //   } else {
+    //     // Default to unchecked for new groups
+    //     comparisonCheckbox.checked = false;
+    //   }
+    //   
+    //   comparisonCheckbox.style.width = '18px';
+    //   comparisonCheckbox.style.height = '18px';
+    //   comparisonCheckbox.style.marginLeft = '50px';
+    //   comparisonCheckbox.title = 'Include in comparison statement';
+    //   comparisonCheckbox.addEventListener('change', refreshCheckboxes);
+    //   row.appendChild(comparisonCheckbox);
+    // }
   });
   
   // Clear initialComparisonFlags after first use
@@ -636,7 +636,7 @@ function refreshButtons() {
   }
   
   // Align the comparison header with the checkboxes
-  alignComparisonHeader();
+  // alignComparisonHeader();
   
   // Apply checkbox limit logic (disable unchecked boxes if 2 are already checked)
   refreshCheckboxes();
