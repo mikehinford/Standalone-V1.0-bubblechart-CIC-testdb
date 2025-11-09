@@ -308,12 +308,6 @@ function drawBubbleChart(year, pollutantId, groupIds) {
         max: maxPollutant + pollutantPadding
       }
     },
-    explorer: {
-      actions: ['dragToZoom', 'rightClickToReset'],
-      axis: 'horizontal',
-      keepInBounds: true,
-      maxZoomIn: 4.0
-    },
     colors: colors,
     colorAxis: {
       legend: {
@@ -426,11 +420,11 @@ function createCustomLegend(chart, data, groupIds, dataPoints) {
     legendItem.style.cursor = 'pointer';
     legendItem.style.fontWeight = '600';
     legendItem.style.margin = '5px 10px';
-    legendItem.style.opacity = seriesVisibility[index] ? '1' : '0.4';
+    const baseColor = window.Colors.getColorForGroup(groupName);
 
     const colorCircle = document.createElement('span');
     colorCircle.style.display = 'inline-block';
-    colorCircle.style.backgroundColor = window.Colors.getColorForGroup(groupName);
+    colorCircle.style.backgroundColor = baseColor;
     colorCircle.style.width = '12px';
     colorCircle.style.height = '12px';
     colorCircle.style.borderRadius = '50%';
@@ -441,22 +435,35 @@ function createCustomLegend(chart, data, groupIds, dataPoints) {
     legendItem.appendChild(colorCircle);
     legendItem.appendChild(label);
 
+    const updateLegendAppearance = (isVisible) => {
+      legendItem.style.opacity = isVisible ? '1' : '0.4';
+      legendItem.style.color = isVisible ? '#000' : '#888';
+      colorCircle.style.backgroundColor = isVisible ? baseColor : '#cccccc';
+    };
+
+    updateLegendAppearance(seriesVisibility[index]);
+
     // Add click handler to toggle visibility
     legendItem.addEventListener('click', () => {
       seriesVisibility[index] = !seriesVisibility[index];
       window.seriesVisibility = seriesVisibility; // Update window reference
       
-      // Update opacity immediately
-      legendItem.style.opacity = seriesVisibility[index] ? '1' : '0.4';
+      // Update legend appearance immediately
+      updateLegendAppearance(seriesVisibility[index]);
+      
+      // Prevent all-series-hidden state (re-enable if user hides last one)
+      if (!seriesVisibility.some(Boolean)) {
+        seriesVisibility[index] = true;
+        updateLegendAppearance(true);
+      }
       
       // Redraw chart with updated visibility
       const currentData = window.ChartRenderer.getCurrentChartData();
       if (currentData) {
-        window.ChartRenderer.drawChart(
+        window.ChartRenderer.drawBubbleChart(
           currentData.year,
           currentData.pollutantId,
-          currentData.groupIds,
-          currentData.dataPoints
+          currentData.groupIds
         );
       }
     });
