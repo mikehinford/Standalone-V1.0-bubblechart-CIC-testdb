@@ -357,7 +357,7 @@ async function generateChartImage() {
           // Draw Logo and Footer
           const logo = new Image();
           logo.crossOrigin = 'anonymous';
-          logo.src = 'Shared resources/images/CIC - Square - Border - Words - Alpha 360x360.png';
+          logo.src = '/Standalone-V1.0-bubblechart-CIC-testdb/Shared resources/images/CIC - Square - Border - Words - Alpha 360x360.png';
 
           const finishGeneration = () => {
             ctx.font = '28px system-ui, sans-serif';
