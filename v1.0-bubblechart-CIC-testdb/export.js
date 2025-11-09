@@ -365,19 +365,30 @@ async function generateChartImage() {
             const labelY = bubbleY;
 
             const innerStrokeWidth = 1.5 * exportScale;
-            const haloThickness = 6 * exportScale;
-            const haloLineWidth = innerStrokeWidth + (2 * haloThickness);
+            const desiredOuterStroke = 3;
+            const outerStrokeWidth = desiredOuterStroke * exportScale;
+            const charSpacing = 0.5 * exportScale;
+            let currentX = labelX;
+            const characters = [...labelText];
 
-            ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-            ctx.lineWidth = haloLineWidth;
-            ctx.strokeText(labelText, labelX, labelY);
+            characters.forEach((char, index) => {
+              ctx.lineWidth = outerStrokeWidth;
+              ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+              ctx.strokeText(char, currentX, labelY);
 
-            ctx.fillStyle = bubbleColor;
-            ctx.fillText(labelText, labelX, labelY);
+              ctx.lineWidth = innerStrokeWidth;
+              ctx.strokeStyle = '#000000';
+              ctx.strokeText(char, currentX, labelY);
 
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = innerStrokeWidth;
-            ctx.strokeText(labelText, labelX, labelY);
+              ctx.fillStyle = bubbleColor;
+              ctx.fillText(char, currentX, labelY);
+
+              const advance = ctx.measureText(char).width;
+              currentX += advance;
+              if (index < characters.length - 1) {
+                currentX += charSpacing;
+              }
+            });
           });
 
           // Draw Logo and Footer

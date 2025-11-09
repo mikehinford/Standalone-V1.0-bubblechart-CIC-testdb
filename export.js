@@ -363,23 +363,35 @@ async function generateChartImage() {
             const labelY = bubbleY;
 
             const desiredInnerStroke = 1.5; // logical px thickness for inner (black) outline in final image
-            const desiredOuterStroke = 6; // logical px thickness for outer (white) halo in final image
+            const desiredOuterStroke = 3; // logical px thickness for outer (white) halo in final image
             const innerStrokeWidth = desiredInnerStroke * exportScale;
             const outerStrokeWidth = desiredOuterStroke * exportScale;
 
             ctx.lineJoin = 'round';
             ctx.miterLimit = 2;
 
-            ctx.lineWidth = outerStrokeWidth;
-            ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-            ctx.strokeText(labelText, labelX, labelY);
+            const charSpacing = 0.5 * exportScale;
+            let currentX = labelX;
+            const characters = [...labelText];
 
-            ctx.lineWidth = innerStrokeWidth;
-            ctx.strokeStyle = '#000000';
-            ctx.strokeText(labelText, labelX, labelY);
+            characters.forEach((char, index) => {
+              ctx.lineWidth = outerStrokeWidth;
+              ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+              ctx.strokeText(char, currentX, labelY);
 
-            ctx.fillStyle = bubbleColor;
-            ctx.fillText(labelText, labelX, labelY);
+              ctx.lineWidth = innerStrokeWidth;
+              ctx.strokeStyle = '#000000';
+              ctx.strokeText(char, currentX, labelY);
+
+              ctx.fillStyle = bubbleColor;
+              ctx.fillText(char, currentX, labelY);
+
+              const advance = ctx.measureText(char).width;
+              currentX += advance;
+              if (index < characters.length - 1) {
+                currentX += charSpacing;
+              }
+            });
 
             // Temporary debug label to show font name used above the value
             const previousFont = ctx.font;
