@@ -127,10 +127,10 @@ Category assignments:
 
 Standard analytics events tracked across applications:
 - `page_load` - Application initialized
-- `chart_drawn` / `scatter_chart_drawn` - Chart rendered
+- `chart_drawn` / `bubble_chart_drawn` - Chart rendered
 - `share_url_copied` - Shareable URL copied
 - `share_png_copied` - Chart image copied to clipboard
-- `chart_downloaded` / `scatter_chart_downloaded` - PNG downloaded
+- `chart_downloaded` / `bubble_chart_downloaded` - PNG downloaded
 
 Analytics can be disabled with URL parameter: `?analytics=off`
 

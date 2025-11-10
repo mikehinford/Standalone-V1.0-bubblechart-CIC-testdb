@@ -54,7 +54,7 @@ async function loadData() {
   try {
     // Track page load
     await trackAnalytics('page_load', { 
-      page: 'scatter_chart',
+  page: 'bubble_chart',
       timestamp: new Date().toISOString()
     });
 
@@ -167,7 +167,7 @@ async function loadData() {
     await trackAnalytics('error', {
       error_type: 'data_load_error',
       error_message: error.message,
-      page: 'scatter_chart'
+  page: 'bubble_chart'
     });
     
     throw error;

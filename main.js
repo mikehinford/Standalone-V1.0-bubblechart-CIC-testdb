@@ -90,7 +90,7 @@ async function init() {
 
     // Track page load
     await window.supabaseModule.trackAnalytics('page_load', {
-      app: 'scatter_chart'
+  app: 'bubble_chart'
     });
 
     console.log('Application initialized successfully');
@@ -889,7 +889,7 @@ function drawChart() {
   updateURL();
   
   // Track chart draw event
-  window.supabaseModule.trackAnalytics('scatter_chart_drawn', {
+  window.supabaseModule.trackAnalytics('bubble_chart_drawn', {
     year: selectedYear,
     pollutant: window.supabaseModule.getPollutantName(selectedPollutantId),
     group_count: selectedGroupIds.length

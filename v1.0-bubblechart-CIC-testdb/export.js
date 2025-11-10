@@ -511,11 +511,12 @@ async function downloadChartPNG() {
 
     // Track analytics
     if (window.Analytics && supabase) {
-      window.Analytics.trackAnalytics(supabase, 'scatter_chart_downloaded', {
+      window.Analytics.trackAnalytics(supabase, 'bubble_chart_downloaded', {
         year: chartData.year,
         pollutant: chartData.pollutantName,
         group_count: chartData.groupIds.length,
-        filename: filename
+  filename: filename,
+  chart_type: 'bubble_chart'
       });
     }
   } catch (error) {
@@ -654,7 +655,8 @@ function showShareDialog() {
         window.Analytics.trackAnalytics(supabase, 'share_url_copied', {
           year: chartData.year,
           pollutant: chartData.pollutantName,
-          group_count: chartData.groupIds.length
+          group_count: chartData.groupIds.length,
+          chart_type: 'bubble_chart'
         });
       }
       
@@ -695,7 +697,8 @@ function showShareDialog() {
           window.Analytics.trackAnalytics(supabase, 'share_png_copied', {
             year: chartData.year,
             pollutant: chartData.pollutantName,
-            group_count: chartData.groupIds.length
+            group_count: chartData.groupIds.length,
+            chart_type: 'bubble_chart'
           });
         }
         
@@ -743,7 +746,8 @@ function showShareDialog() {
           window.Analytics.trackAnalytics(supabase, 'email_share_copied', {
             year: chartData.year,
             pollutant: chartData.pollutantName,
-            group_count: chartData.groupIds.length
+            group_count: chartData.groupIds.length,
+            chart_type: 'bubble_chart'
           });
         }
         
@@ -802,7 +806,8 @@ function exportData(format = 'csv') {
       format: format,
       pollutant: pollutantName,
       year: year,
-      group_count: dataPoints.length
+      group_count: dataPoints.length,
+      chart_type: 'bubble_chart'
     });
   }
 
