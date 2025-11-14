@@ -787,6 +787,18 @@ function setupEventListeners() {
     console.log('Window resized, redrawing chart...');
     drawChart();
   }, 250));
+
+  // Tutorial button
+  const tutorialBtn = document.getElementById('tutorialBtn');
+  if (tutorialBtn) {
+    tutorialBtn.addEventListener('click', function() {
+      const tutorialWindow = window.open('tutorial.html', 'tutorial', 
+        'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no');
+      if (tutorialWindow) {
+        tutorialWindow.focus();
+      }
+    });
+  }
 }
 
 /**

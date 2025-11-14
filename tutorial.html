@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble Chart Tutorial</title>
+    <link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+    <div class="tutorial-container">
+        <!-- Slide 1 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.001.png" alt="Tutorial Introduction">
+            </div>
+        </div>
+
+        <!-- Slide 2 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.002.png" alt="Interface Overview">
+            </div>
+        </div>
+
+        <!-- Slide 3 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.003.png" alt="Selecting a Pollutant">
+            </div>
+        </div>
+
+        <!-- Base slide for image (slides 4-6) -->
+        <div class="tutorial-slide base-image-slide" data-slide-type="base-image" data-slide-id="4">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.004.png" alt="Chart Overview">
+            </div>
+        </div>
+
+        <!-- Slide 4 -->
+        <div class="tutorial-slide text-overlay" data-slide-type="text-overlay" data-base-slide="4">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.041.png" alt="Viewing Data Groups">
+            </div>
+        </div>
+
+        <!-- Slide 5 -->
+        <div class="tutorial-slide text-overlay" data-slide-type="text-overlay" data-base-slide="4">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.042.png" alt="Group Information">
+            </div>
+        </div>
+
+        <!-- Slide 6 -->
+        <div class="tutorial-slide text-overlay" data-slide-type="text-overlay" data-base-slide="4">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.043.png" alt="Interacting with the Chart">
+            </div>
+        </div>
+
+        <!-- Slide 7 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.007.png" alt="Changing Years">
+            </div>
+        </div>
+
+        <!-- Slide 8 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.008.png" alt="Exporting Data">
+            </div>
+        </div>
+
+        <!-- Slide 9 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.009.png" alt="Sharing Your View">
+            </div>
+        </div>
+
+        <!-- Slide 10 -->
+        <div class="tutorial-slide" data-image-change="true">
+            <div class="image-content full-screen">
+                <img src="tutorial/B-Chart Explainer Slides.010.png" alt="Getting Help">
+            </div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <button class="nav-btn prev-btn" aria-label="Previous slide">&#10094;</button>
+        <button class="nav-btn next-btn" aria-label="Next slide">&#10095;</button>
+        
+        <!-- White flash overlay for transitions -->
+        <div class="white-flash" aria-hidden="true"></div>
+        
+        <!-- Pagination -->
+        <div class="pagination">
+            <span class="current-slide">1</span> / <span class="total-slides">10</span>
+        </div>
+    </div>
+
+    <script src="tutorial.js"></script>
+</body>
+</html>
