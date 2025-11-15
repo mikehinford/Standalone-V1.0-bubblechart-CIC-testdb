@@ -3,30 +3,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const layerImages = Array.from(document.querySelectorAll('.layer-image'));
     const layerBySuffix = new Map(layerImages.map(img => [img.dataset.suffix, img]));
     const SLIDE_MATRIX = [
-        ['002','003','004','000'],
-        ['002','003','004','006'],
-        ['002','003','004','008'],
-        ['002','003','004','010','011'],
-        ['002','003','004','010','013'],
-        ['002','003','015'],
-        ['002','016'],
+        ['002','003','004','005'],
+        ['002','003','004','007'],
+        ['002','003','004','009'],
+        ['002','003','004','011','012'],
+        ['002','003','004','011','014'],
+        ['002','003','016'],
         ['002','017'],
         ['002','018'],
-        ['002','019']
+        ['002','019'],
+        ['002','020']
     ];
     
     const prevBtn = document.querySelector('.prev-btn');
     const nextBtn = document.querySelector('.next-btn');
-    const currentSlideEl = document.querySelector('.current-slide');
-    const totalSlidesEl = document.querySelector('.total-slides');
-    const paginationEl = document.querySelector('.pagination');
     
     let currentSlide = 0;
     let isTransitioning = false;
     let currentVisibleLayers = new Set();
-    
-    // Set total slides count
-    totalSlidesEl.textContent = SLIDE_MATRIX.length;
     
     // Initialize nav button visibility
     if (prevBtn) prevBtn.style.display = 'none';
@@ -52,31 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.history.back();
             }
         }
-    });
-
-    function positionPagination(targetLayers) {
-        if (!paginationEl) return;
-        // Choose top-most visible layer from target order (last in the array)
-        const order = Array.from(targetLayers);
-        const topSuffix = order[order.length - 1];
-        const img = layerBySuffix.get(topSuffix) || layerBySuffix.get('002');
-        if (!img) return;
-        const containerRect = document.querySelector('.tutorial-container').getBoundingClientRect();
-        const imgRect = img.getBoundingClientRect();
-        const offsetX = 16; // padding from image right
-        const offsetY = 16 + 30; // padding from image bottom (+30px per request)
-        const left = Math.max(containerRect.left, imgRect.right - offsetX) - containerRect.left;
-        const top = Math.max(containerRect.top, imgRect.bottom - offsetY) - containerRect.top;
-        paginationEl.style.left = `${left - paginationEl.offsetWidth}px`;
-        paginationEl.style.top = `${top - paginationEl.offsetHeight}px`;
-        paginationEl.style.right = '';
-        paginationEl.style.bottom = '';
-    }
-
-    window.addEventListener('resize', () => {
-        // Reposition pagination based on current layers
-        const targetLayers = currentVisibleLayers.size ? currentVisibleLayers : new Set(SLIDE_MATRIX[currentSlide]);
-        positionPagination(targetLayers);
     });
     
     // Touch events for mobile
@@ -139,10 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
             currentVisibleLayers = new Set(targetLayers);
             currentSlide = newSlideIndex;
 
-            // Update pagination
-            currentSlideEl.textContent = currentSlide + 1;
-            positionPagination(targetLayers);
-
             // Update button states
             if (prevBtn) prevBtn.style.display = currentSlide === 0 ? 'none' : 'block';
             nextBtn.textContent = '\u276F';
@@ -165,8 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Initial pagination position
-    positionPagination(new Set(SLIDE_MATRIX[currentSlide]));
     // MutationObserver removed; overlay/base behavior is now handled in showSlide
 });
 
