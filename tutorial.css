@@ -20,45 +20,33 @@ body {
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    background: #000;
+    background: #fff;
 }
 
-/* Base slide styles */
-.tutorial-slide {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    transition: opacity 0.5s ease-in-out;
-    pointer-events: none;
-}
+/* Base slide styles (legacy - hidden when using layered stage) */
+.tutorial-slide { display: none; }
 
-.tutorial-slide.active {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-/* Base image slide (full screen) */
-.tutorial-slide.base-image-slide {
-    z-index: 1; /* Keep below text overlays */
-}
-
-/* White flash overlay for transitions */
-.white-flash {
+/* Layered stage */
+.layer-stage {
     position: absolute;
     inset: 0;
-    background: white;
-    opacity: 0;
-    transition: opacity 200ms ease-in-out;
-    z-index: 999; /* Above slides and UI */
-    pointer-events: none;
+    background: #fff;
 }
 
-.white-flash.active {
+.layer-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    transition: opacity 300ms ease;
+}
+
+.layer-image.visible {
     opacity: 1;
 }
+
 
 .tutorial-slide.base-image-slide .full-screen {
     width: 100%;
@@ -152,7 +140,7 @@ body {
     height: 80px;
     cursor: pointer;
     transition: all 0.3s;
-    z-index: 10;
+    z-index: 30;
     border-radius: 6px;
 }
 
@@ -170,7 +158,7 @@ body {
 
 .pagination {
     position: absolute;
-    bottom: 1.5rem;
+    bottom: calc(1.5rem + 30px);
     right: 1.5rem;
     left: auto;
     transform: none;
@@ -183,11 +171,12 @@ body {
     display: flex;
     align-items: center;
     gap: 0.3rem;
+    z-index: 40; /* Above slides and nav */
 }
 
 .current-slide {
     font-weight: 700;
-    color: #63b3ed;
+    color: #e58745;
 }
 
 /* Responsive adjustments */
